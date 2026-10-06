@@ -8,9 +8,7 @@ use super::super::super::contract_seed_v2::{
 use super::super::super::seed_v2_crypto::{
     actor_digest, candidate_record, prepare_seed_operation, request_digest, verify_stored_record,
 };
-use super::super::super::store::{
-    SeedBindingLookup, SeedBindingRecord, SeedOperationLookup, SeedOperationRecord,
-};
+use super::super::super::store::{SeedBindingLookup, SeedOperationLookup, SeedOperationRecord};
 use super::super::inference_profile_ops::{admit_inference_profiles, bind_inference_provenance};
 use super::super::seed_v2_support::{
     corrupt_seed_record, derive_from_pinned_operation, existing_submission, response,
@@ -67,7 +65,7 @@ pub(super) fn submit(
             &actor_digest,
             &request_digest,
         )? {
-            SeedOperationLookup::Prepared(operation) => Some(*operation),
+            SeedOperationLookup::Prepared(operation) => Some((*operation).into_record()),
             SeedOperationLookup::CandidatePersisted(record) => {
                 return existing_submission(service, actor, &request, &request_digest, *record);
             }
@@ -94,7 +92,7 @@ pub(super) fn submit(
             let mut execution_request = request.clone().into_execution_request();
             execution_request.admission = Some(binding.clone());
             let workflow_run_id =
-                super::super::live_run_id(&execution_request, &definition_digest)?;
+                super::super::super::live_run_id(&execution_request, &definition_digest)?;
             if workflow_run_id != operation.workflow_run_id {
                 return Err(corrupt_seed_record(
                     "prepared seed operation run identity no longer matches its request",
@@ -138,7 +136,7 @@ pub(super) fn submit(
                 })?;
             execution_request.admission = Some(binding.clone());
             let workflow_run_id =
-                super::super::live_run_id(&execution_request, &definition_digest)?;
+                super::super::super::live_run_id(&execution_request, &definition_digest)?;
             if request.seed.mode == SeedModeV2::DeriveOnce {
                 let proposed = prepare_seed_operation(
                     &request,

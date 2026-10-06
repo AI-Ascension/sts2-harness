@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 
 use super::super::contract::{
-    CommandRequest, CommandResponse, EventPage, ExportResponse, PendingOperation,
+    CommandRequest, CommandResponse, EventPage, ExportResponse, PendingOperation, RunEvent,
 };
 use super::ops;
 use super::{
-    CommandAcceptance, CommandApplication, MemoryWorkflowStore, RunEvent, RunSnapshot, StoreError,
+    CommandAcceptance, CommandApplication, MemoryWorkflowStore, RunSnapshot, StoreError,
     SubmissionLookup, WorkflowStore,
 };
 

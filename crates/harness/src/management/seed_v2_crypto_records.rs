@@ -125,7 +125,6 @@ pub(in crate::management) fn prepare_seed_operation(
 /// Derives only from a committed operation record and an exact historical
 /// key handle loaded by identity. The provisional current key is never an
 /// authority once a stored reservation exists.
-
 pub(in crate::management) fn derive_candidate_from_operation(
     request: &WorkflowRunRequestV2,
     actor: &AuthContext,

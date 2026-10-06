@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use rusqlite::{OptionalExtension, params};
+use rusqlite::OptionalExtension;
 
 use super::super::super::contract_seed_v2::{
     SeedOperationPhaseV2, StoredSeedBindingV2, StoredSeedOperationV2,
