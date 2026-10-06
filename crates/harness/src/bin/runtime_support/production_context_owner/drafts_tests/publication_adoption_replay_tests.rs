@@ -293,8 +293,7 @@ fn adoption_replay_is_bound_to_source_identity_and_survives_later_revision_and_r
         source_status_before_historical_replay
     );
 
-    let outer: sts2_harness::management::ContextControlReceipt =
-        serde_json::from_value(adopted_value).expect("outer adoption receipt");
+    let outer = adopted_receipt;
     let inner = sts2_harness::context_control::ControlReceipt {
         command_id: outer.command_id.clone(),
         idempotency_key: outer.idempotency_key.clone(),

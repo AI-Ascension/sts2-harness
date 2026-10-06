@@ -223,9 +223,11 @@ fn served_dynamic_publication_seeds_exact_document_and_caps_retention() {
     let (status, response) = post_create(&publication, &request);
     assert_eq!(status, 200, "served dynamic create: {response}");
     let created = receipt(&response);
-    let ContextOwnerMutationResult::Draft(envelope) = &created.result else {
-        panic!("dynamic create returned a non-draft receipt");
-    };
+    let envelope = match &created.result {
+        ContextOwnerMutationResult::Draft(envelope) => Some(envelope),
+        _ => None,
+    }
+    .expect("dynamic create returned a non-draft receipt");
     assert_eq!(envelope.binding, binding);
     let mut expected_draft = expected_source.draft;
     expected_draft.draft_id.clone_from(&request.draft_id);

@@ -164,7 +164,7 @@ impl Owner {
         )))
     }
 
-    pub(super) fn eligible_registry(
+    fn eligible_registry(
         &self,
         entry: &Current,
         state: &OwnerDraftState,

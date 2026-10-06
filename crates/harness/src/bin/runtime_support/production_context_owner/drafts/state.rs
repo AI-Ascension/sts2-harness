@@ -3,7 +3,7 @@
 // Durable draft-state CAS and mutation-receipt replay helpers.
 
 impl Owner {
-    pub(super) fn load_draft_state(
+    fn load_draft_state(
         &self,
         entry: &Current,
         workflow_run_id: &str,

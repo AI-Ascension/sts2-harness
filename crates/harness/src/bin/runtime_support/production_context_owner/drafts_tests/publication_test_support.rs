@@ -47,10 +47,12 @@ fn create_served_publication_fixture() -> ServedPublicationFixture {
         Some(&serde_json::to_vec(&create).expect("draft create JSON")),
     );
     assert_eq!(status, 200, "served draft creation: {created}");
-    match &receipt(&created).result {
-        ContextOwnerMutationResult::Draft(envelope) => assert_eq!(envelope.draft.version, 1),
-        result => panic!("draft creation returned unexpected result: {result:?}"),
+    let envelope = match receipt(&created).result {
+        ContextOwnerMutationResult::Draft(envelope) => Some(envelope),
+        _ => None,
     }
+    .expect("draft creation returned an unexpected result");
+    assert_eq!(envelope.draft.version, 1);
 
     let (status, before_publication) = call(
         Arc::clone(&service),
