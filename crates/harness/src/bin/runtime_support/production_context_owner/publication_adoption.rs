@@ -112,9 +112,8 @@ impl Owner {
             return Err(publication_active_conflict());
         }
         let binding = self.authorize_current_binding(actor, snapshot, entry, false)?;
-        let descriptor = self
-            .catalog(actor)?
-            .descriptor_for(&self.configuration.context_ref, "decide")?;
+        let catalog = self.catalog(actor)?;
+        let descriptor = catalog.descriptor_for(&self.configuration.context_ref, "decide")?;
         if !descriptor.grants.content_read
             || !binding.grants.content_read
             || publication.receipt.binding != binding
