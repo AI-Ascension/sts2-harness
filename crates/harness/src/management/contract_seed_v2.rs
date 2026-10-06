@@ -146,31 +146,6 @@ pub(crate) enum SeedOperationPhaseV2 {
     CandidatePersisted,
 }
 
-pub(crate) fn readback(
-    workflow_run_id: &str,
-    operation_id: &str,
-    mode: SeedModeV2,
-    requested_seed: Option<String>,
-    effective_seed: String,
-    derivation: Option<&StoredSeedDerivationV2>,
-    configuration_digest: &str,
-    state: SeedBindingStateV2,
-) -> SeedBindingReadbackV2 {
-    SeedBindingReadbackV2 {
-        schema_version: WORKFLOW_SEED_BINDING_V2_SCHEMA.to_owned(),
-        workflow_run_id: workflow_run_id.to_owned(),
-        operation_id: operation_id.to_owned(),
-        mode,
-        requested_seed,
-        effective_seed,
-        algorithm_id: derivation.map(|pin| pin.algorithm_id.clone()),
-        key_authority_id: derivation.map(|pin| pin.key.authority_id.clone()),
-        key_version: derivation.map(|pin| pin.key.version.clone()),
-        configuration_digest: configuration_digest.to_owned(),
-        state,
-    }
-}
-
 #[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct StoredSeedDerivationV2 {
@@ -225,16 +200,22 @@ impl std::fmt::Debug for StoredSeedBindingV2 {
 
 impl StoredSeedBindingV2 {
     pub(crate) fn readback(&self) -> SeedBindingReadbackV2 {
-        readback(
-            &self.workflow_run_id,
-            &self.operation_id,
-            self.mode,
-            self.requested_seed.clone(),
-            self.effective_seed.clone(),
-            self.derivation.as_ref(),
-            &self.configuration_digest,
-            self.state,
-        )
+        SeedBindingReadbackV2 {
+            schema_version: WORKFLOW_SEED_BINDING_V2_SCHEMA.to_owned(),
+            workflow_run_id: self.workflow_run_id.to_owned(),
+            operation_id: self.operation_id.to_owned(),
+            mode: self.mode,
+            requested_seed: self.requested_seed.clone(),
+            effective_seed: self.effective_seed.clone(),
+            algorithm_id: self.derivation.as_ref().map(|pin| pin.algorithm_id.clone()),
+            key_authority_id: self
+                .derivation
+                .as_ref()
+                .map(|pin| pin.key.authority_id.clone()),
+            key_version: self.derivation.as_ref().map(|pin| pin.key.version.clone()),
+            configuration_digest: self.configuration_digest.to_owned(),
+            state: self.state,
+        }
     }
 
     pub(crate) fn visible_to(&self, actor: &AuthContext) -> bool {
