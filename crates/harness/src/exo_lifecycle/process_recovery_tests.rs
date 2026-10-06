@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+use super::fixture::Fixture;
 use super::fixture::write_process_file as write_once;
-use super::fixture::{self, Fixture};
 use super::process_effect_fixture::{
     PersistentProcessEffect as PersistentEffect, assert_one_effect_attempt,
     assert_response_delivered, assert_response_not_delivered, assert_sent_journal_unchanged,
