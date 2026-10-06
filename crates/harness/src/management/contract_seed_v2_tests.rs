@@ -2,7 +2,7 @@
 
 use super::*;
 
-fn request(seed: serde_json::Value) -> WorkflowRunRequestV2 {
+fn request(seed: serde_json::Value) -> Result<WorkflowRunRequestV2, serde_json::Error> {
     serde_json::from_value(serde_json::json!({
         "schema_version": WORKFLOW_RUN_REQUEST_V2_SCHEMA,
         "request_id": "request-v2-1",
@@ -13,7 +13,6 @@ fn request(seed: serde_json::Value) -> WorkflowRunRequestV2 {
         "admission": null,
         "seed": seed,
     }))
-    .expect("closed v2 request")
 }
 
 fn seed_request(mode: &str, seed: Option<&str>) -> serde_json::Value {
@@ -28,42 +27,46 @@ fn seed_request(mode: &str, seed: Option<&str>) -> serde_json::Value {
 }
 
 #[test]
-fn derive_once_is_closed_and_contains_no_seed_or_key_selector() {
-    let request = request(seed_request("derive_once", None));
-    request.validate_seed().expect("derive-once request");
+fn derive_once_is_closed_and_contains_no_seed_or_key_selector()
+-> Result<(), Box<dyn std::error::Error>> {
+    let request = request(seed_request("derive_once", None))?;
+    request.validate_seed()?;
 
-    let serialized = serde_json::to_value(request).expect("serialize request");
+    let serialized = serde_json::to_value(request)?;
     let seed = serialized
         .get("seed")
         .and_then(serde_json::Value::as_object)
-        .expect("nested seed object");
+        .ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::InvalidData, "nested seed object")
+        })?;
     assert_eq!(seed.len(), 2, "only schema and mode are admitted");
     assert!(!seed.contains_key("seed"));
     assert!(!seed.contains_key("key_version"));
     assert!(!seed.contains_key("authority_id"));
+    Ok(())
 }
 
 #[test]
-fn explicit_seed_requires_a_canonical_seed_and_derivation_rejects_one() {
-    request(seed_request("explicit", Some("seed-123")))
-        .validate_seed()
-        .expect("canonical explicit seed");
+fn explicit_seed_requires_a_canonical_seed_and_derivation_rejects_one()
+-> Result<(), Box<dyn std::error::Error>> {
+    request(seed_request("explicit", Some("seed-123")))?.validate_seed()?;
 
     assert!(
-        request(seed_request("explicit", None))
+        request(seed_request("explicit", None))?
             .validate_seed()
             .is_err()
     );
     assert!(
-        request(seed_request("derive_once", Some("seed-123")))
+        request(seed_request("derive_once", Some("seed-123")))?
             .validate_seed()
             .is_err()
     );
     assert!(
-        request(seed_request("explicit", Some(" seed-123")))
+        request(seed_request("explicit", Some(" seed-123")))?
             .validate_seed()
             .is_err()
     );
+    Ok(())
 }
 
 #[test]
@@ -87,7 +90,7 @@ fn v2_request_and_nested_seed_reject_unknown_fields() {
 }
 
 #[test]
-fn v2_request_rejects_unknown_schema_and_seed_mode() {
+fn v2_request_rejects_unknown_schema_and_seed_mode() -> Result<(), Box<dyn std::error::Error>> {
     let mut request_value = serde_json::json!({
         "schema_version": WORKFLOW_RUN_REQUEST_V2_SCHEMA,
         "request_id": "request-v2-1",
@@ -106,8 +109,9 @@ fn v2_request_rejects_unknown_schema_and_seed_mode() {
             .is_some_and(|request| request.validate_seed().is_err())
     );
     assert!(
-        request(seed_request("future_mode", None))
+        request(seed_request("future_mode", None))?
             .validate_seed()
             .is_err()
     );
+    Ok(())
 }

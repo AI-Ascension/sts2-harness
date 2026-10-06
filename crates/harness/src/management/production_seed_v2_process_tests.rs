@@ -25,7 +25,8 @@ const CATALOG: &str = "HARNESS_SEED_V2_PROCESS_CATALOG";
 
 #[cfg(target_os = "linux")]
 #[test]
-fn independent_process_restart_replays_durable_candidate_without_effects() {
+fn independent_process_restart_replays_durable_candidate_without_effects()
+-> Result<(), Box<dyn std::error::Error>> {
     let directory = PrivateDirectory::create();
     let database = directory.path().join("workflow.sqlite");
     let request_path = directory.path().join("request.json");
@@ -51,7 +52,7 @@ fn independent_process_restart_replays_durable_candidate_without_effects() {
         &first_response_path,
         &key_v1,
         "live.catalog.v1",
-    );
+    )?;
     assert_success(&first_process, "initial process submission");
 
     let replay_process = run_child(
@@ -61,7 +62,7 @@ fn independent_process_restart_replays_durable_candidate_without_effects() {
         &replay_response_path,
         &key_rotated,
         "live.catalog.rotated",
-    );
+    )?;
     assert_success(&replay_process, "independent process replay");
     eprintln!(
         "harness103 SQLite process witness: submit child pid={} exit={:?}; replay child pid={} exit={:?}",
@@ -136,29 +137,30 @@ fn independent_process_restart_replays_durable_candidate_without_effects() {
     );
     drop(reopened);
     directory.cleanup();
+    Ok(())
 }
 
 #[cfg(target_os = "linux")]
 #[test]
-fn seed_v2_process_child_entry() {
+fn seed_v2_process_child_entry() -> Result<(), Box<dyn std::error::Error>> {
     let Ok(mode) = std::env::var(MODE) else {
-        return;
+        return Ok(());
     };
     assert!(
         mode == "submit" || mode == "replay",
         "unknown child test mode"
     );
-    let database = required_env(DATABASE);
-    let request_path = required_env(REQUEST);
+    let database = required_env(DATABASE)?;
+    let request_path = required_env(REQUEST)?;
     let request: WorkflowRunRequestV2 =
         serde_json::from_slice(&std::fs::read(&request_path).expect("read parent request fixture"))
             .expect("decode parent request fixture");
-    let keys = Arc::new(CountingAuthority::open(Path::new(&required_env(KEYRING))));
+    let keys = Arc::new(CountingAuthority::open(Path::new(&required_env(KEYRING)?)));
     let store = open_store(Path::new(&database));
     let server = start_live_server(
         Arc::clone(&store),
         Arc::clone(&keys),
-        &required_env(CATALOG),
+        &required_env(CATALOG)?,
     );
     let response = ManagementClient::new(
         server.server.address(),
@@ -199,12 +201,13 @@ fn seed_v2_process_child_entry() {
         );
     }
     std::fs::write(
-        required_env(RESPONSE),
+        required_env(RESPONSE)?,
         serde_json::to_vec(&response).unwrap(),
     )
     .expect("write child process response");
     server.server.shutdown().expect("stop child process server");
     drop(store);
+    Ok(())
 }
 
 struct ChildResult {
@@ -219,8 +222,8 @@ fn run_child(
     response: &Path,
     keyring: &Path,
     catalog: &str,
-) -> ChildResult {
-    let child = Command::new(std::env::current_exe().expect("current Rust test executable"))
+) -> Result<ChildResult, std::io::Error> {
+    let child = Command::new(std::env::current_exe()?)
         .arg("seed_v2_process_child_entry")
         .arg("--nocapture")
         .env(MODE, mode)
@@ -231,31 +234,54 @@ fn run_child(
         .env(CATALOG, catalog)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .spawn()
-        .expect("spawn independent process test");
+        .spawn()?;
     let process_id = child.id();
     let deadline = Instant::now() + Duration::from_secs(30);
-    let output = wait_for_child(child, deadline, process_id);
-    ChildResult { process_id, output }
+    let output = wait_for_child(child, deadline, process_id)?;
+    Ok(ChildResult { process_id, output })
 }
 
-fn wait_for_child(mut child: Child, deadline: Instant, process_id: u32) -> Output {
+fn wait_for_child(
+    mut child: Child,
+    deadline: Instant,
+    process_id: u32,
+) -> Result<Output, std::io::Error> {
     loop {
-        match child.try_wait() {
-            Ok(Some(_)) => return child.wait_with_output().expect("collect child output"),
+        let (error_kind, reason) = match child.try_wait() {
+            Ok(Some(_)) => {
+                return child.wait_with_output().map_err(|error| {
+                    std::io::Error::other(format!(
+                        "collect output from owned child process {process_id}: {error}"
+                    ))
+                });
+            }
             Ok(None) if Instant::now() < deadline => {
                 std::thread::sleep(Duration::from_millis(25));
+                continue;
             }
-            Ok(None) | Err(_) => {
-                let _ = child.kill();
-                let output = child.wait_with_output().expect("reap timed-out child");
-                panic!(
-                    "owned child process {process_id} exceeded 30s or could not be observed; stdout={}; stderr={}",
-                    String::from_utf8_lossy(&output.stdout),
-                    String::from_utf8_lossy(&output.stderr)
-                );
-            }
-        }
+            Ok(None) => (
+                std::io::ErrorKind::TimedOut,
+                format!("owned child process {process_id} exceeded 30s"),
+            ),
+            Err(error) => (
+                std::io::ErrorKind::Other,
+                format!("could not observe owned child process {process_id}: {error}"),
+            ),
+        };
+        let kill = child.kill();
+        let output = child.wait_with_output().map_err(|error| {
+            std::io::Error::other(format!(
+                "{reason}; wait for owned child process {process_id} after kill {kill:?}: {error}"
+            ))
+        })?;
+        return Err(std::io::Error::new(
+            error_kind,
+            format!(
+                "{reason}; kill result {kill:?}; stdout={}; stderr={}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            ),
+        ));
     }
 }
 
@@ -278,6 +304,11 @@ fn assert_success(result: &ChildResult, label: &str) {
     );
 }
 
-fn required_env(name: &str) -> String {
-    std::env::var(name).unwrap_or_else(|_| panic!("missing child process input {name}"))
+fn required_env(name: &str) -> Result<String, std::io::Error> {
+    std::env::var(name).map_err(|error| {
+        std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("missing child process input {name}: {error}"),
+        )
+    })
 }

@@ -16,7 +16,8 @@ use crate::management::{
 
 #[cfg(target_os = "linux")]
 #[test]
-fn valid_candidate_with_a_different_owner_configuration_writes_no_run_or_event_rows() {
+fn valid_candidate_with_a_different_owner_configuration_writes_no_run_or_event_rows()
+-> Result<(), String> {
     let directory = PrivateDirectory::create();
     let database = directory.path().join("mismatched-admission.sqlite");
     let key_path = directory.keyring("keys.conf", "key-1", &[("key-1", "11")]);
@@ -50,7 +51,11 @@ fn valid_candidate_with_a_different_owner_configuration_writes_no_run_or_event_r
         .expect("persist seed operation")
     {
         SeedOperationLookup::Prepared(operation) => *operation,
-        _ => panic!("new operation reservation must remain prepared"),
+        _ => {
+            drop(store);
+            directory.cleanup();
+            return Err("new operation reservation must remain prepared".to_owned());
+        }
     };
     let key = crate::management::seed_v2_crypto::load_pinned_operation_key(
         operation.record(),
@@ -120,6 +125,7 @@ fn valid_candidate_with_a_different_owner_configuration_writes_no_run_or_event_r
     drop(store_trait);
     drop(store);
     directory.cleanup();
+    Ok(())
 }
 
 #[test]
@@ -387,10 +393,13 @@ fn assert_store_corrupt(
     actor_digest: &str,
     request_digest: &str,
 ) {
-    match store.lookup_seed_operation(request_id, actor_digest, request_digest) {
-        Err(error) => assert_eq!(error.code, "store_corrupt"),
-        Ok(_) => panic!("inconsistent persisted candidate must fail closed"),
-    }
+    assert!(
+        matches!(
+            store.lookup_seed_operation(request_id, actor_digest, request_digest),
+            Err(error) if error.code == "store_corrupt"
+        ),
+        "inconsistent persisted candidate must fail closed"
+    );
 }
 
 fn table_count(store: &crate::management::SqliteWorkflowStore, table: &str) -> i64 {

@@ -126,7 +126,8 @@ fn reservation_commit_failure_selects_no_seed_and_rotated_retry_pins_new_key() {
 
 #[cfg(target_os = "linux")]
 #[test]
-fn candidate_transaction_failure_keeps_key_pin_and_retry_uses_historical_key() {
+fn candidate_transaction_failure_keeps_key_pin_and_retry_uses_historical_key() -> Result<(), String>
+{
     let directory = PrivateDirectory::create();
     let database = directory.path().join("candidate-rollback.sqlite");
     let key_v1 = directory.keyring("keys-v1.conf", "key-1", &[("key-1", "11")]);
@@ -176,7 +177,15 @@ fn candidate_transaction_failure_keeps_key_pin_and_retry_uses_historical_key() {
         .expect("read committed reservation")
     {
         SeedOperationLookup::Prepared(operation) => operation,
-        _ => panic!("failed candidate leaves the key-pinned operation prepared"),
+        _ => {
+            first_server
+                .server
+                .shutdown()
+                .expect("stop management server after unexpected reservation state");
+            drop(first_store);
+            directory.cleanup();
+            return Err("failed candidate leaves the key-pinned operation prepared".to_owned());
+        }
     };
     let expected_candidate = {
         let key = crate::management::seed_v2_crypto::load_pinned_operation_key(
@@ -237,6 +246,7 @@ fn candidate_transaction_failure_keeps_key_pin_and_retry_uses_historical_key() {
     retry_server.server.shutdown().expect("stop retry server");
     drop(reopened);
     directory.cleanup();
+    Ok(())
 }
 
 #[cfg(target_os = "linux")]

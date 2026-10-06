@@ -186,8 +186,8 @@ pub(super) fn row_count(store: &crate::management::SqliteWorkflowStore, table: &
         .expect("read durable row count")
 }
 
-pub(super) fn required_env(name: &str) -> String {
-    std::env::var(name).unwrap_or_else(|_| panic!("missing child process input {name}"))
+pub(super) fn required_env(name: &str) -> Result<String, String> {
+    std::env::var(name).map_err(|error| format!("missing child process input {name}: {error}"))
 }
 
 #[cfg(target_os = "linux")]

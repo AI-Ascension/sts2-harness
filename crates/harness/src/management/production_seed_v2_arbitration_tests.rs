@@ -354,10 +354,13 @@ fn tampered_operation_index_is_rejected_before_candidate_rows_commit() {
         super::super::seed_v2_support::SUBJECT,
     )
     .expect("request digest");
-    match store.lookup_seed_operation(&request.request_id, &actor_digest, &request_digest) {
-        Err(error) => assert_eq!(error.code, "store_corrupt"),
-        Ok(_) => panic!("mismatched indexed configuration digest must fail closed"),
-    }
+    assert!(
+        matches!(
+            store.lookup_seed_operation(&request.request_id, &actor_digest, &request_digest),
+            Err(error) if error.code == "store_corrupt"
+        ),
+        "mismatched indexed configuration digest must fail closed"
+    );
     server.server.shutdown().expect("stop management server");
     drop(store);
     directory.cleanup();

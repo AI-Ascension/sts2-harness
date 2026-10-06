@@ -33,7 +33,8 @@ const PROCESS_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[cfg(target_os = "linux")]
 #[test]
-fn independent_process_reservation_arbitration_converges_across_key_rotation() {
+fn independent_process_reservation_arbitration_converges_across_key_rotation() -> Result<(), String>
+{
     let directory = PrivateDirectory::create();
     let database = directory.path().join("workflow.sqlite");
     drop(open_store(&database));
@@ -85,9 +86,7 @@ fn independent_process_reservation_arbitration_converges_across_key_rotation() {
 
     let ready = [ready_one, ready_two];
     let barrier_deadline = Instant::now() + PROCESS_TIMEOUT;
-    if let Err(error) = wait_for_files(&ready, barrier_deadline) {
-        panic!("independent key contenders did not reach the reservation barrier: {error}");
-    }
+    wait_for_files(&ready, barrier_deadline)?;
     assert_eq!(
         fs::read_to_string(&ready[0]).expect("read first selected key"),
         "key-1"
@@ -97,12 +96,8 @@ fn independent_process_reservation_arbitration_converges_across_key_rotation() {
         "key-2"
     );
 
-    let first_output = first_child
-        .finish()
-        .unwrap_or_else(|error| panic!("first reservation process failed: {error}"));
-    let second_output = second_child
-        .finish()
-        .unwrap_or_else(|error| panic!("second reservation process failed: {error}"));
+    let first_output = first_child.finish()?;
+    let second_output = second_child.finish()?;
     eprintln!(
         "H103 independent reservation race: child pid={} exit={:?}; child pid={} exit={:?}",
         first_output.process_id,
@@ -198,31 +193,32 @@ fn independent_process_reservation_arbitration_converges_across_key_rotation() {
     }
     drop(reopened);
     directory.cleanup();
+    Ok(())
 }
 
 #[cfg(target_os = "linux")]
 #[test]
-fn seed_v2_reservation_process_child_entry() {
+fn seed_v2_reservation_process_child_entry() -> Result<(), String> {
     let Ok(mode) = std::env::var(MODE) else {
-        return;
+        return Ok(());
     };
     assert_eq!(mode, "race", "unknown reservation child mode");
-    let role = required_env(ROLE);
+    let role = required_env(ROLE)?;
     assert!(role == "key-1" || role == "key-2");
-    let barrier = PathBuf::from(required_env(BARRIER));
+    let barrier = PathBuf::from(required_env(BARRIER)?);
     let request: WorkflowRunRequestV2 =
-        serde_json::from_slice(&fs::read(required_env(REQUEST)).expect("read parent request"))
+        serde_json::from_slice(&fs::read(required_env(REQUEST)?).expect("read parent request"))
             .expect("decode parent request");
     let authority = Arc::new(BarrierKeyAuthority::open(
-        Path::new(&required_env(KEYRING)),
+        Path::new(&required_env(KEYRING)?),
         &barrier,
         &role,
     ));
-    let store = open_store(Path::new(&required_env(DATABASE)));
+    let store = open_store(Path::new(&required_env(DATABASE)?));
     let server = start_live_server(
         Arc::clone(&store),
         Arc::clone(&authority),
-        &required_env(CATALOG),
+        &required_env(CATALOG)?,
     );
     let response = crate::management::ManagementClient::new(
         server.server.address(),
@@ -258,10 +254,11 @@ fn seed_v2_reservation_process_child_entry() {
         .expect("stop child management server");
     drop(store);
     fs::write(
-        required_env(RESPONSE),
+        required_env(RESPONSE)?,
         serde_json::to_vec(&report).expect("serialize child report"),
     )
     .expect("write child report");
+    Ok(())
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]

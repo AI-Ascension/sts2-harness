@@ -7,12 +7,12 @@ use crate::management::contract::{
 };
 use crate::management::seed_key::Keyring;
 
-fn keyring() -> Keyring {
+fn keyring() -> Result<Keyring, Box<dyn std::error::Error>> {
     let text = format!(
         "schema=ascension.seed-keyring/v1\nauthority_id=workflow-service\ncurrent_version=key-1\nkey.key-1={}\n",
         "11".repeat(32)
     );
-    Keyring::parse(text.as_bytes()).expect("test keyring")
+    Ok(Keyring::parse(text.as_bytes())?)
 }
 
 fn admission(catalog_revision: &str) -> TargetAdmissionBinding {
@@ -38,8 +38,10 @@ fn admission(catalog_revision: &str) -> TargetAdmissionBinding {
     }
 }
 
-fn derive_request(binding: TargetAdmissionBinding) -> WorkflowRunRequestV2 {
-    serde_json::from_value(serde_json::json!({
+fn derive_request(
+    binding: TargetAdmissionBinding,
+) -> Result<WorkflowRunRequestV2, Box<dyn std::error::Error>> {
+    Ok(serde_json::from_value(serde_json::json!({
         "schema_version": super::super::contract_seed_v2::WORKFLOW_RUN_REQUEST_V2_SCHEMA,
         "request_id": "seed-request-1",
         "definition": {"nodes": []},
@@ -51,17 +53,17 @@ fn derive_request(binding: TargetAdmissionBinding) -> WorkflowRunRequestV2 {
             "schema_version": super::super::contract_seed_v2::WORKFLOW_SEED_REQUEST_V2_SCHEMA,
             "mode": "derive_once"
         }
-    }))
-    .expect("derive-once request")
+    }))?)
 }
 
 #[test]
-fn candidate_retains_exact_owner_admission_for_restart_verification() {
-    let actor = AuthContext::new("owner-a", ["workflow:*".to_owned()]).expect("actor");
+fn candidate_retains_exact_owner_admission_for_restart_verification()
+-> Result<(), Box<dyn std::error::Error>> {
+    let actor = AuthContext::new("owner-a", ["workflow:*".to_owned()])?;
     let admitted = admission("catalog-1");
-    let request = derive_request(admitted.clone());
-    let request_digest = request_digest(&request, &actor.subject).expect("request digest");
-    let keyring = keyring();
+    let request = derive_request(admitted.clone())?;
+    let request_digest = request_digest(&request, &actor.subject)?;
+    let keyring = keyring()?;
     let record = candidate_record(
         &request,
         &actor,
@@ -69,21 +71,17 @@ fn candidate_retains_exact_owner_admission_for_restart_verification() {
         "run-seed-1",
         &admitted,
         Some(&keyring),
-    )
-    .expect("candidate");
+    )?;
 
     assert_eq!(record.admitted_configuration, admitted);
-    assert!(
-        verify_candidate(
-            &record,
-            &request,
-            &actor,
-            &request_digest,
-            "run-seed-1",
-            Some(&keyring),
-        )
-        .expect("verify original tuple")
-    );
+    assert!(verify_candidate(
+        &record,
+        &request,
+        &actor,
+        &request_digest,
+        "run-seed-1",
+        Some(&keyring),
+    )?);
 
     let mut evolved = record.clone();
     evolved.admitted_configuration.catalog_revision = "catalog-2".to_owned();
@@ -102,15 +100,17 @@ fn candidate_retains_exact_owner_admission_for_restart_verification() {
         ),
         Err(SeedKeyError::InvalidIdentity)
     ));
+    Ok(())
 }
 
 #[test]
-fn pinned_seed_replay_uses_historical_key_after_current_rotation() {
-    let actor = AuthContext::new("owner-a", ["workflow:*".to_owned()]).expect("actor");
+fn pinned_seed_replay_uses_historical_key_after_current_rotation()
+-> Result<(), Box<dyn std::error::Error>> {
+    let actor = AuthContext::new("owner-a", ["workflow:*".to_owned()])?;
     let admitted = admission("catalog-1");
-    let request = derive_request(admitted.clone());
-    let request_digest = request_digest(&request, &actor.subject).expect("request digest");
-    let old_keyring = keyring();
+    let request = derive_request(admitted.clone())?;
+    let request_digest = request_digest(&request, &actor.subject)?;
+    let old_keyring = keyring()?;
     let record = candidate_record(
         &request,
         &actor,
@@ -118,32 +118,28 @@ fn pinned_seed_replay_uses_historical_key_after_current_rotation() {
         "run-seed-1",
         &admitted,
         Some(&old_keyring),
-    )
-    .expect("candidate");
+    )?;
 
     let rotated_text = format!(
         "schema=ascension.seed-keyring/v1\nauthority_id=workflow-service\ncurrent_version=key-2\nkey.key-1={}\nkey.key-2={}\n",
         "11".repeat(32),
         "22".repeat(32)
     );
-    let rotated = Keyring::parse(rotated_text.as_bytes()).expect("rotated keyring");
-    assert!(
-        verify_candidate(
-            &record,
-            &request,
-            &actor,
-            &request_digest,
-            "run-seed-1",
-            Some(&rotated),
-        )
-        .expect("historical key replay")
-    );
+    let rotated = Keyring::parse(rotated_text.as_bytes())?;
+    assert!(verify_candidate(
+        &record,
+        &request,
+        &actor,
+        &request_digest,
+        "run-seed-1",
+        Some(&rotated),
+    )?);
 
     let missing_old_text = format!(
         "schema=ascension.seed-keyring/v1\nauthority_id=workflow-service\ncurrent_version=key-2\nkey.key-2={}\n",
         "22".repeat(32)
     );
-    let missing_old = Keyring::parse(missing_old_text.as_bytes()).expect("new-only keyring");
+    let missing_old = Keyring::parse(missing_old_text.as_bytes())?;
     assert!(matches!(
         verify_candidate(
             &record,
@@ -155,4 +151,5 @@ fn pinned_seed_replay_uses_historical_key_after_current_rotation() {
         ),
         Err(SeedKeyError::KeyVersionUnavailable)
     ));
+    Ok(())
 }
