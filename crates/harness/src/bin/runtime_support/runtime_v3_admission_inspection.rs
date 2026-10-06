@@ -1,19 +1,22 @@
 // SPDX-License-Identifier: MIT
 
+struct InspectedDeployment {
+    identity: ExoIdentity,
+    private_state: sts2_harness::exo_bridge_configuration::PrivateStateProfile,
+}
+
 fn inspected_deployment(
     process: &ExoProcessConfig,
     package_path: &str,
     native_instance_id: &str,
-) -> Result<ExoIdentity, String> {
+) -> Result<InspectedDeployment, String> {
     let [mode, path, digest] = process.arguments() else {
         return Err(
             "Exo envelope requires --run or --run-v2, absolute configuration path and digest"
                 .to_owned(),
         );
     };
-    if !matches!(mode.as_str(), "--run" | "--run-v2")
-        || !std::path::Path::new(path).is_absolute()
-    {
+    if !matches!(mode.as_str(), "--run" | "--run-v2") || !std::path::Path::new(path).is_absolute() {
         return Err(
             "Exo envelope requires --run or --run-v2, absolute configuration path and digest"
                 .to_owned(),
@@ -30,12 +33,16 @@ fn inspected_deployment(
             "Exo deployment configuration or package locator does not match launch".to_owned(),
         );
     }
-    loaded
+    let identity = loaded
         .inspected_identity(
             std::path::Path::new(process.executable()),
             native_instance_id,
         )
-        .map_err(|code| format!("Exo deployment inspection refused: {code}"))
+        .map_err(|code| format!("Exo deployment inspection refused: {code}"))?;
+    Ok(InspectedDeployment {
+        identity,
+        private_state: loaded.private_state,
+    })
 }
 
 /// Inspects the artifacts the launch can bind to an explicit locator. The bridge executable and the

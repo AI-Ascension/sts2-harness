@@ -8,12 +8,21 @@ use std::os::unix::fs::DirBuilderExt;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use sts2_harness::exo_private_state::{
+    BridgeChildScope, ExecutorPrivateState, GuardedRun, RunPaths,
+};
 use sts2_harness::{
     Decision, ExoBridgeRequestEnvelope, ExoWireOutcome, encode_bridge_response,
     parse_bridge_decision,
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
+
+#[path = "exo_bridge_run_guarded.rs"]
+mod guarded;
+
+use guarded::execute_guarded;
+pub(super) use guarded::guarded_executor_command;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -58,6 +67,9 @@ pub fn execute(
     envelope: ExoBridgeRequestEnvelope,
     synthetic: bool,
 ) -> Result<Vec<u8>, &'static str> {
+    if loaded.guarded_private_state().is_some() {
+        return execute_guarded(loaded, envelope, synthetic, false);
+    }
     let credential = if synthetic {
         String::from("sts2-synthetic-model-key")
     } else {
@@ -86,6 +98,9 @@ pub fn execute_v2(
     envelope: ExoBridgeRequestEnvelope,
     synthetic: bool,
 ) -> Result<Vec<u8>, &'static str> {
+    if loaded.guarded_private_state().is_some() {
+        return execute_guarded(loaded, envelope, synthetic, true);
+    }
     let credential = if synthetic {
         String::from("sts2-synthetic-model-key")
     } else {

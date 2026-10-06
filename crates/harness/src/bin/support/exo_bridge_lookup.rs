@@ -9,10 +9,18 @@ use sts2_harness::ExoDecisionRequest;
 use sts2_harness::exo_bridge_configuration as config;
 use sts2_harness::exo_lookup_process::ExoLookupProfile;
 use sts2_harness::exo_lookup_wire::{
-    EXO_LOOKUP_BOOTSTRAP_WIRE, EXO_LOOKUP_FEEDBACK_BYTES, EXO_LOOKUP_FRAME_BYTES,
-    EXO_LOOKUP_HISTORY_WIRE, EXO_LOOKUP_WIRE, ExoLookupFrame, ExoLookupPayload,
+    EXO_LOOKUP_BOOTSTRAP_WIRE, EXO_LOOKUP_FEEDBACK_BYTES, EXO_LOOKUP_HISTORY_WIRE, EXO_LOOKUP_WIRE,
+    ExoLookupFrame, ExoLookupPayload,
 };
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncWriteExt;
+
+#[path = "exo_bridge_lookup_guarded.rs"]
+mod guarded;
+
+#[path = "exo_bridge_lookup_io.rs"]
+mod io;
+
+pub(super) use io::read_line;
 
 /// The profile a `--lookup*` mode selects, or `None` when the mode is not a lookup mode.
 ///
@@ -53,6 +61,40 @@ fn execute_mode(
     if credential.is_empty() {
         return Err("exo_bridge_credentials_unavailable");
     }
+    if let Some(policy) = loaded.guarded_private_state() {
+        let mut guarded =
+            sts2_harness::exo_private_state::GuardedRun::create(policy, &loaded.digest)?;
+        let runtime = match tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        {
+            Ok(runtime) => runtime,
+            Err(_) => {
+                guarded.finish()?;
+                return Err("exo_bridge_runtime");
+            }
+        };
+        let result = runtime.block_on(guarded::relay(loaded, &mut guarded, credential, profile));
+        let cleanup = guarded.finish();
+        let terminal = result?;
+        cleanup?;
+        if let Some(bytes) = terminal {
+            runtime.block_on(async {
+                let mut output = tokio::io::stdout();
+                output
+                    .write_all(&bytes)
+                    .await
+                    .map_err(|_| "exo_bridge_output")?;
+                output
+                    .write_all(b"\n")
+                    .await
+                    .map_err(|_| "exo_bridge_output")?;
+                output.flush().await.map_err(|_| "exo_bridge_output")
+            })?;
+        }
+        runtime.shutdown_timeout(std::time::Duration::from_millis(100));
+        return Ok(());
+    }
     let private = PrivateRoot::create()?;
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -62,23 +104,6 @@ fn execute_mode(
     // Tokio's process-owned stdin worker cannot interrupt an OS read; main exits after this bound.
     runtime.shutdown_timeout(std::time::Duration::from_millis(100));
     result
-}
-
-async fn read_line(reader: &mut (impl AsyncRead + Unpin)) -> Result<Vec<u8>, &'static str> {
-    let mut bytes = Vec::new();
-    loop {
-        let byte = reader
-            .read_u8()
-            .await
-            .map_err(|_| "exo_bridge_lookup_input")?;
-        if byte == b'\n' {
-            return Ok(bytes);
-        }
-        if bytes.len() >= EXO_LOOKUP_FRAME_BYTES {
-            return Err("exo_bridge_lookup_bound");
-        }
-        bytes.push(byte);
-    }
 }
 
 async fn relay(

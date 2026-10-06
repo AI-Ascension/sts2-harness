@@ -235,6 +235,7 @@ mod tests {
             timeout_millis: 1,
             max_output_tokens: 1,
             credential: String::new(),
+            private_state: None,
         };
         let fetch = custom(
             FETCH_GUARD,
