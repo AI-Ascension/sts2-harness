@@ -4,7 +4,10 @@ use std::path::Path;
 
 use zeroize::Zeroizing;
 
-use super::{Keyring, MAX_KEYRING_BYTES, SeedDerivationKeyAuthority, SeedKeyError, SeedKeyHandle};
+use super::{Keyring, SeedDerivationKeyAuthority, SeedKeyError, SeedKeyHandle};
+
+#[cfg(target_os = "linux")]
+use super::MAX_KEYRING_BYTES;
 
 /// Read-only snapshot of a protected service keyring. The snapshot is immutable
 /// for this process lifetime; rotating the selected version requires restart.
