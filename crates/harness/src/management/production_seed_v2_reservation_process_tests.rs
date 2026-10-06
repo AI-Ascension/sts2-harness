@@ -56,7 +56,12 @@ fn independent_process_reservation_arbitration_converges_across_key_rotation() -
     fs::create_dir(&barrier).expect("create interprocess barrier directory");
     set_private_directory(&barrier);
 
-    let (request, _) = derive_once_request();
+    let (mut request, _) = derive_once_request();
+    request
+        .admission
+        .as_mut()
+        .expect("request fixture admission")
+        .catalog_revision = "live.catalog.rotation-race".to_owned();
     fs::write(
         &request_path,
         serde_json::to_vec(&request).expect("serialize shared request"),

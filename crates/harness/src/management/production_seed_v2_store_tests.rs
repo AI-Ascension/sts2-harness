@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 
 use super::seed_v2_support::{
     CountingAuthority, PrivateDirectory, client, derive_once_request, open_store, request_bytes,
-    runtime_counts, start_live_server,
+    runtime_counts, start_live_server, start_live_server_with_catalog_revisions,
 };
 #[path = "production_seed_v2_store_support_tests.rs"]
 mod support;
@@ -200,10 +200,11 @@ fn operation_lookup_keeps_one_sqlite_snapshot_across_candidate_commit() {
     let first_response = client(&first_server)
         .request_json("POST", "/v2/workflow-runs", Some(&request_bytes(&request)))
         .expect("first request leaves key-pinned operation");
-    assert_eq!(first_response.status, 500);
+    assert_eq!(first_response.status, 503);
     let error: serde_json::Value =
         serde_json::from_slice(&first_response.body).expect("store error response");
-    assert_eq!(error["error"]["class"], "store");
+    assert_eq!(error["error"]["class"], "unavailable");
+    assert_eq!(error["error"]["code"], "store_sqlite");
     first_server
         .server
         .shutdown()
@@ -227,10 +228,11 @@ fn operation_lookup_keeps_one_sqlite_snapshot_across_candidate_commit() {
         .execute_batch("DROP TRIGGER fail_seed_binding;")
         .expect("clear candidate fault");
     let writer_keys = Arc::new(CountingAuthority::open(&keyring));
-    let writer_server = start_live_server(
+    let writer_server = start_live_server_with_catalog_revisions(
         Arc::clone(&writer),
         Arc::clone(&writer_keys),
         "catalog.must-not-affect-the-pinned-operation",
+        "catalog.initial",
     );
     let mut reader_connection = reader.connection.lock().expect("reader SQLite lock");
     let transaction = reader_connection

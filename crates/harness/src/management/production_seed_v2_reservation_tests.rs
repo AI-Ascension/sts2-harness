@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use super::super::seed_v2_support::{
     CountingAuthority, PrivateDirectory, client, derive_once_request, open_store, request_bytes,
-    runtime_counts, start_live_server,
+    runtime_counts, start_live_server, start_live_server_with_catalog_revisions,
 };
 use crate::management::{
     SeedBindingStateV2, SeedOperationLookup, SeededRunSubmissionResponseV2, WorkflowStore,
@@ -42,11 +42,12 @@ pub(super) fn count(store: &crate::management::SqliteWorkflowStore, table: &str)
 
 pub(super) fn assert_store_failure(response: &crate::management::ClientResponse) {
     assert_eq!(
-        response.status, 500,
-        "injected SQLite write must fail as store error"
+        response.status, 503,
+        "injected SQLite write must fail as unavailable"
     );
     let body: serde_json::Value = serde_json::from_slice(&response.body).expect("error body");
-    assert_eq!(body["error"]["class"], "store");
+    assert_eq!(body["error"]["class"], "unavailable");
+    assert_eq!(body["error"]["code"], "store_sqlite");
 }
 
 #[cfg(target_os = "linux")]
@@ -222,10 +223,11 @@ fn candidate_transaction_failure_keeps_key_pin_and_retry_uses_historical_key() -
     let rotated = directory.keyring("keys-v2.conf", "key-2", &[("key-1", "11"), ("key-2", "22")]);
     let reopened = open_store(&database);
     let retry_keys = Arc::new(CountingAuthority::open(&rotated));
-    let retry_server = start_live_server(
+    let retry_server = start_live_server_with_catalog_revisions(
         Arc::clone(&reopened),
         Arc::clone(&retry_keys),
         "rotated.catalog.must-not-be-read",
+        "live.catalog.v1",
     );
     let response = client(&retry_server)
         .request_json("POST", "/v2/workflow-runs", Some(&request_bytes(&request)))
@@ -332,10 +334,11 @@ fn missing_or_changed_pinned_key_fails_closed_without_current_key_fallback() {
     );
     let restored_store = open_store(&database);
     let restored_keys = Arc::new(CountingAuthority::open(&restored));
-    let restored_server = start_live_server(
+    let restored_server = start_live_server_with_catalog_revisions(
         Arc::clone(&restored_store),
         Arc::clone(&restored_keys),
         "catalog-not-read",
+        "live.catalog.v1",
     );
     let response = client(&restored_server)
         .request_json("POST", "/v2/workflow-runs", Some(&request_bytes(&request)))

@@ -8,10 +8,10 @@ use std::sync::{Arc, Mutex};
 
 use super::{Counters, Shared, duplicate_run_tests};
 use crate::management::{
-    AuthContext, CapabilityPort, FileSeedDerivationKeyAuthority, ManagementClient, ManagementError,
-    ManagementServer, ManagementService, RunRequest, SeedDerivationKeyAuthority, SeedModeV2,
-    SeedRequestV2, ServerConfig, SqliteWorkflowStore, StaticAuthenticator,
-    TARGET_CATALOG_SCHEMA_VERSION, TargetCatalogResponse, TargetDescriptor,
+    AuthContext, CapabilityPort, FileSeedDerivationKeyAuthority, LiveTargetCatalogPort,
+    ManagementClient, ManagementError, ManagementServer, ManagementService, RunRequest,
+    SeedDerivationKeyAuthority, SeedModeV2, SeedRequestV2, ServerConfig, SqliteWorkflowStore,
+    StaticAuthenticator, TARGET_CATALOG_SCHEMA_VERSION, TargetCatalogResponse, TargetDescriptor,
     WORKFLOW_RUN_REQUEST_V2_SCHEMA, WORKFLOW_SEED_REQUEST_V2_SCHEMA, WorkflowExecutionPort,
     WorkflowRunRequestV2, WorkflowStore, live_run_id,
 };
@@ -70,6 +70,7 @@ impl SeedDerivationKeyAuthority for CountingAuthority {
 pub(super) struct CatalogCapabilities {
     pub(super) revision: String,
     profile: String,
+    descriptor: TargetDescriptor,
     pub(super) calls: Arc<AtomicUsize>,
 }
 
@@ -93,7 +94,25 @@ impl CapabilityPort for CatalogCapabilities {
         Ok(TargetCatalogResponse {
             schema_version: TARGET_CATALOG_SCHEMA_VERSION.to_owned(),
             catalog_revision: self.revision.clone(),
-            targets: vec![seed_v2_target_descriptor()],
+            targets: vec![self.descriptor.clone()],
+        })
+    }
+}
+
+struct SeedV2ExecutionCatalog {
+    revision: String,
+    descriptor: TargetDescriptor,
+}
+
+impl LiveTargetCatalogPort for SeedV2ExecutionCatalog {
+    fn target_catalog(
+        &self,
+        _actor: &AuthContext,
+    ) -> Result<TargetCatalogResponse, ManagementError> {
+        Ok(TargetCatalogResponse {
+            schema_version: TARGET_CATALOG_SCHEMA_VERSION.to_owned(),
+            catalog_revision: self.revision.clone(),
+            targets: vec![self.descriptor.clone()],
         })
     }
 }
@@ -107,12 +126,12 @@ fn seed_v2_target_descriptor() -> TargetDescriptor {
     descriptor
 }
 
-fn bind_seed_v2_target_descriptor(request: &mut RunRequest) {
+fn bind_seed_v2_target_descriptor(request: &mut RunRequest, descriptor: &TargetDescriptor) {
     request
         .admission
         .as_mut()
         .expect("seed v2 fixture carries target admission")
-        .descriptor_digest = seed_v2_target_descriptor()
+        .descriptor_digest = descriptor
         .digest()
         .expect("seed v2 target descriptor digest");
 }
@@ -131,12 +150,36 @@ pub(super) fn start_live_server<K>(
 where
     K: SeedDerivationKeyAuthority + 'static,
 {
+    start_live_server_with_catalog_revisions(store, keys, catalog_revision, catalog_revision)
+}
+
+/// Separates service catalog state from execution's pinned catalog for recovery-path fixtures.
+pub(super) fn start_live_server_with_catalog_revisions<K>(
+    store: Arc<SqliteWorkflowStore>,
+    keys: Arc<K>,
+    service_catalog_revision: &str,
+    execution_catalog_revision: &str,
+) -> LiveServerFixture
+where
+    K: SeedDerivationKeyAuthority + 'static,
+{
     let (mut request, definition_digest) = duplicate_run_tests::admitted_request();
-    bind_seed_v2_target_descriptor(&mut request);
+    let descriptor = seed_v2_target_descriptor();
+    bind_seed_v2_target_descriptor(&mut request, &descriptor);
+    request
+        .admission
+        .as_mut()
+        .expect("seed v2 fixture carries target admission")
+        .catalog_revision = execution_catalog_revision.to_owned();
     let profile = request.profile.clone();
     let run_id = live_run_id(&request, &definition_digest).expect("live run ID");
     let runtime_counters = Arc::new(Mutex::new(Counters::default()));
-    let execution = duplicate_run_tests::live_port(&runtime_counters, &run_id);
+    let execution_catalog: Arc<dyn LiveTargetCatalogPort> = Arc::new(SeedV2ExecutionCatalog {
+        revision: execution_catalog_revision.to_owned(),
+        descriptor: descriptor.clone(),
+    });
+    let execution =
+        duplicate_run_tests::live_port_with_catalog(&runtime_counters, &run_id, execution_catalog);
     let execution: Arc<dyn WorkflowExecutionPort> = Arc::new(execution);
     let catalog_calls = Arc::new(AtomicUsize::new(0));
     let store: Arc<dyn WorkflowStore> = store;
@@ -146,8 +189,9 @@ where
         ))
         .with_execution_port(execution)
         .with_capability_port(Arc::new(CatalogCapabilities {
-            revision: catalog_revision.to_owned(),
+            revision: service_catalog_revision.to_owned(),
             profile,
+            descriptor,
             calls: Arc::clone(&catalog_calls),
         }))
         .with_seed_derivation_key_authority(keys);
@@ -174,7 +218,8 @@ where
 
 pub(super) fn derive_once_request() -> (WorkflowRunRequestV2, String) {
     let (mut legacy, definition_digest) = duplicate_run_tests::admitted_request();
-    bind_seed_v2_target_descriptor(&mut legacy);
+    let descriptor = seed_v2_target_descriptor();
+    bind_seed_v2_target_descriptor(&mut legacy, &descriptor);
     let request = WorkflowRunRequestV2 {
         schema_version: WORKFLOW_RUN_REQUEST_V2_SCHEMA.to_owned(),
         request_id: legacy.request_id,
