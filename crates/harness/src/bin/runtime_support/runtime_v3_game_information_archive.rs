@@ -46,9 +46,8 @@ pub(super) fn persist(
             "lookup archive exceeded its bounded chunk count",
         ));
     }
-    let now = RuntimeGameInformationOwner::policy_now_timestamp();
-    let expires =
-        RuntimeGameInformationOwner::policy_timestamp_after(owner.archive_retention_seconds());
+    let now = owner.policy_now_timestamp();
+    let expires = owner.policy_timestamp_after(owner.archive_retention_seconds());
     let generation = corpus.generation().max(1);
     let admitted_seq = owner.policy_now_seconds();
     let mut references = Vec::with_capacity(chunks.len());

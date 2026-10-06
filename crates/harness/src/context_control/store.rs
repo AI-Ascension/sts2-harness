@@ -11,14 +11,17 @@
 mod owner_state;
 #[path = "store_persist.rs"]
 mod persist;
+#[path = "store_publication.rs"]
+mod publication;
 
 use super::state::ControlAuthority;
 use super::store_receipts::{persist_owner_receipt, prepare_owner_receipt};
 use super::store_render_sources::persist_active_source;
 use super::store_schema::{digest, ensure_schema, insert_outbox, now_seconds};
 use super::store_types::{
-    AAD, DurableActiveContextSource, DurableContextOwnerControlReceipt, DurableControlStoreError,
-    DurableStoreFailpoint, MAX_JOURNAL_BYTES, StoreMode,
+    AAD, DurableActiveContextSource, DurableContextOwnerControlReceipt,
+    DurableContextOwnerPublication, DurableControlStoreError, DurableStoreFailpoint,
+    MAX_JOURNAL_BYTES, StoreMode,
 };
 use chacha20poly1305::aead::{Aead, KeyInit, Payload};
 use chacha20poly1305::{Key, XChaCha20Poly1305, XNonce};
@@ -69,7 +72,7 @@ impl ContextControlStore {
         authority: &ControlAuthority,
         mode: StoreMode,
     ) -> Result<(), DurableControlStoreError> {
-        self.persist_inner(authority, mode, None, None)
+        self.persist_inner(authority, mode, None, None, None)
     }
 
     /// Atomically persists the authority transition and its exact owner-issued receipt.
@@ -83,7 +86,7 @@ impl ContextControlStore {
         mode: StoreMode,
         record: &DurableContextOwnerControlReceipt,
     ) -> Result<(), DurableControlStoreError> {
-        self.persist_inner(authority, mode, Some(record), None)
+        self.persist_inner(authority, mode, Some(record), None, None)
     }
 
     /// Atomically persists an owner control receipt, the resulting authority journal, and the
@@ -95,7 +98,26 @@ impl ContextControlStore {
         record: &DurableContextOwnerControlReceipt,
         source: &DurableActiveContextSource,
     ) -> Result<(), DurableControlStoreError> {
-        self.persist_inner(authority, mode, Some(record), Some(source))
+        self.persist_inner(authority, mode, Some(record), Some(source), None)
+    }
+
+    /// Persists dynamic publication activation with the exact same authority, pointer, and
+    /// selected control-receipt envelope as one SQLite commit.
+    pub fn persist_with_owner_control_receipt_and_publication(
+        &mut self,
+        authority: &ControlAuthority,
+        mode: StoreMode,
+        record: &DurableContextOwnerControlReceipt,
+        source: &DurableActiveContextSource,
+        publication: &DurableContextOwnerPublication,
+    ) -> Result<(), DurableControlStoreError> {
+        self.persist_inner(
+            authority,
+            mode,
+            Some(record),
+            Some(source),
+            Some(publication),
+        )
     }
 
     pub fn load(&self) -> Result<ControlAuthority, DurableControlStoreError> {
@@ -206,25 +228,7 @@ impl ContextControlStore {
         plaintext: &[u8],
         aad: &[u8],
     ) -> Result<Vec<u8>, DurableControlStoreError> {
-        let first = Uuid::new_v4();
-        let second = Uuid::new_v4();
-        let mut nonce = [0_u8; 24];
-        nonce[..16].copy_from_slice(first.as_bytes());
-        nonce[16..].copy_from_slice(&second.as_bytes()[..8]);
-        let cipher = XChaCha20Poly1305::new(&Key::from(self.key));
-        let ciphertext = cipher
-            .encrypt(
-                (&nonce).into(),
-                Payload {
-                    msg: plaintext,
-                    aad,
-                },
-            )
-            .map_err(|_| DurableControlStoreError::AuthenticationFailed)?;
-        let mut envelope = Vec::with_capacity(nonce.len() + ciphertext.len());
-        envelope.extend_from_slice(&nonce);
-        envelope.extend_from_slice(&ciphertext);
-        Ok(envelope)
+        encrypt_with_key(&self.key, plaintext, aad)
     }
 
     pub(super) fn decrypt(&self, envelope: &[u8]) -> Result<Vec<u8>, DurableControlStoreError> {
@@ -238,6 +242,32 @@ impl ContextControlStore {
     ) -> Result<Vec<u8>, DurableControlStoreError> {
         decrypt_with_key(&self.key, envelope, aad)
     }
+}
+
+pub(super) fn encrypt_with_key(
+    key: &[u8; 32],
+    plaintext: &[u8],
+    aad: &[u8],
+) -> Result<Vec<u8>, DurableControlStoreError> {
+    let first = Uuid::new_v4();
+    let second = Uuid::new_v4();
+    let mut nonce = [0_u8; 24];
+    nonce[..16].copy_from_slice(first.as_bytes());
+    nonce[16..].copy_from_slice(&second.as_bytes()[..8]);
+    let cipher = XChaCha20Poly1305::new(&Key::from(*key));
+    let ciphertext = cipher
+        .encrypt(
+            (&nonce).into(),
+            Payload {
+                msg: plaintext,
+                aad,
+            },
+        )
+        .map_err(|_| DurableControlStoreError::AuthenticationFailed)?;
+    let mut envelope = Vec::with_capacity(nonce.len() + ciphertext.len());
+    envelope.extend_from_slice(&nonce);
+    envelope.extend_from_slice(&ciphertext);
+    Ok(envelope)
 }
 
 pub(super) fn decrypt_with_key(

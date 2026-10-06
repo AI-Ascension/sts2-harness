@@ -4,8 +4,7 @@
 fn served_production_owner_allows_edit_only_preview_and_recovers_exact_receipt_after_restart() {
     let fixture = owner_fixture();
     assert_eq!(
-        fixture.runtime_binding.model_revision,
-        "native-model-rev-1",
+        fixture.runtime_binding.model_revision, "native-model-rev-1",
         "model revision is a separate namespace from the pinned Exo source revision"
     );
     let owner_binding = fixture
@@ -14,7 +13,10 @@ fn served_production_owner_allows_edit_only_preview_and_recovers_exact_receipt_a
         .expect("current production binding");
     let run = fixture.snapshot.workflow_run_id.clone();
     let auth = authenticator();
-    let service = service(Arc::clone(&fixture.owner), Arc::clone(&fixture.workflow_store));
+    let management_service = service(
+        Arc::clone(&fixture.owner),
+        Arc::clone(&fixture.workflow_store),
+    );
     let create = ContextOwnerDraftCreateRequest {
         schema_version: CONTEXT_OWNER_DRAFT_REQUEST_SCHEMA_VERSION.to_owned(),
         request_id: "draft.create.1".to_owned(),
@@ -24,7 +26,7 @@ fn served_production_owner_allows_edit_only_preview_and_recovers_exact_receipt_a
     };
     let body = serde_json::to_vec(&create).expect("create request JSON");
     let (status, original) = call(
-        Arc::clone(&service),
+        Arc::clone(&management_service),
         Arc::clone(&auth),
         "edit-token",
         "POST",
@@ -33,10 +35,13 @@ fn served_production_owner_allows_edit_only_preview_and_recovers_exact_receipt_a
     );
     assert_eq!(status, 200, "edit-only draft creation: {original}");
     let original_receipt = receipt(&original);
-    assert!(matches!(original_receipt.result, ContextOwnerMutationResult::Draft(_)));
+    assert!(matches!(
+        original_receipt.result,
+        ContextOwnerMutationResult::Draft(_)
+    ));
 
     let (status, duplicate) = call(
-        Arc::clone(&service),
+        Arc::clone(&management_service),
         Arc::clone(&auth),
         "edit-token",
         "POST",
@@ -44,21 +49,27 @@ fn served_production_owner_allows_edit_only_preview_and_recovers_exact_receipt_a
         Some(&body),
     );
     assert_eq!(status, 200, "exact retry: {duplicate}");
-    assert_eq!(duplicate, original, "exact request returns its immutable receipt");
+    assert_eq!(
+        duplicate, original,
+        "exact request returns its immutable receipt"
+    );
 
     let changed = ContextOwnerDraftCreateRequest {
         draft_id: "draft.changed".to_owned(),
         ..create.clone()
     };
     let (status, request_conflict) = call(
-        Arc::clone(&service),
+        Arc::clone(&management_service),
         Arc::clone(&auth),
         "edit-token",
         "POST",
         &run_path(&run, "context-owner-drafts"),
         Some(&serde_json::to_vec(&changed).expect("changed create request JSON")),
     );
-    assert_eq!(status, 409, "request ID reuse with another payload conflicts: {request_conflict}");
+    assert_eq!(
+        status, 409,
+        "request ID reuse with another payload conflicts: {request_conflict}"
+    );
 
     let note_text = "owner-note-confidential-sentinel-4bd7";
     let note_patch = ContextOwnerDraftPatchRequest {
@@ -72,20 +83,37 @@ fn served_production_owner_allows_edit_only_preview_and_recovers_exact_receipt_a
             text: note_text.to_owned(),
         }],
     };
-    let (status, note_result) = call(
-        Arc::clone(&service),
+    let (status, note_result) = client_call(
+        Arc::clone(&management_service),
         Arc::clone(&auth),
         "edit-token",
         "PATCH",
         &run_path(&run, "context-owner-drafts/draft.1"),
         Some(&serde_json::to_vec(&note_patch).expect("note patch JSON")),
     );
-    assert_eq!(status, 200, "finite active-source note authoring: {note_result}");
+    assert_eq!(
+        status, 200,
+        "finite active-source note authoring: {note_result}"
+    );
     assert!(matches!(
         receipt(&note_result).result,
         ContextOwnerMutationResult::Draft(_)
     ));
-
+    let (status, recovered_note) = lookup_mutation_receipt(
+        Arc::clone(&management_service),
+        Arc::clone(&auth),
+        "read-token",
+        &run,
+        ContextOwnerMutationRequest::PatchDraft(note_patch.clone()),
+    );
+    assert_eq!(
+        status, 200,
+        "same-actor patch receipt lookup: {recovered_note}"
+    );
+    assert_eq!(
+        recovered_note, note_result,
+        "patch lookup returns the exact receipt"
+    );
     let preview_request = ContextOwnerPreviewRequest {
         schema_version: CONTEXT_OWNER_PREVIEW_REQUEST_SCHEMA_VERSION.to_owned(),
         request_id: "draft.preview.1".to_owned(),
@@ -94,7 +122,7 @@ fn served_production_owner_allows_edit_only_preview_and_recovers_exact_receipt_a
         expected_boundary: owner_binding.boundary.clone(),
     };
     let (status, preview_value) = call(
-        Arc::clone(&service),
+        Arc::clone(&management_service),
         Arc::clone(&auth),
         "edit-token",
         "POST",
@@ -106,13 +134,28 @@ fn served_production_owner_allows_edit_only_preview_and_recovers_exact_receipt_a
         receipt(&preview_value).result,
         ContextOwnerMutationResult::Preview(_)
     ));
+    let (status, recovered_preview) = lookup_mutation_receipt(
+        Arc::clone(&management_service),
+        Arc::clone(&auth),
+        "read-token",
+        &run,
+        ContextOwnerMutationRequest::CreatePreview(preview_request.clone()),
+    );
+    assert_eq!(
+        status, 200,
+        "same-actor preview receipt lookup: {recovered_preview}"
+    );
+    assert_eq!(
+        recovered_preview, preview_value,
+        "preview lookup returns the exact receipt"
+    );
     let serialized_preview = preview_value.to_string();
     assert!(!serialized_preview.contains("trusted strategy material"));
     assert!(!serialized_preview.contains(note_text));
     assert!(!serialized_preview.contains("prepared_bytes"));
 
     let (status, authored_content) = call(
-        Arc::clone(&service),
+        Arc::clone(&management_service),
         Arc::clone(&auth),
         "content-token",
         "GET",
@@ -122,13 +165,18 @@ fn served_production_owner_allows_edit_only_preview_and_recovers_exact_receipt_a
         ),
         None,
     );
-    assert_eq!(status, 200, "authorized exact draft item bytes: {authored_content}");
+    assert_eq!(
+        status, 200,
+        "authorized exact draft item bytes: {authored_content}"
+    );
     let items = authored_content["items"].as_array().expect("item array");
     let note = items
         .iter()
         .find(|item| item["reference"]["item_id"] == "draft-note.draft.1.note.1")
         .expect("draft note appears in its owner-resolved eligible set");
-    let content = note["content"].as_array().expect("content projection bytes");
+    let content = note["content"]
+        .as_array()
+        .expect("content projection bytes");
     let content = content
         .iter()
         .map(|byte| {
@@ -140,14 +188,17 @@ fn served_production_owner_allows_edit_only_preview_and_recovers_exact_receipt_a
     assert_eq!(content, note_text.as_bytes());
 
     let (status, metadata) = call(
-        Arc::clone(&service),
+        Arc::clone(&management_service),
         Arc::clone(&auth),
         "read-token",
         "GET",
         &run_path(&run, "context-owner-items?draft_id=draft.1"),
         None,
     );
-    assert_eq!(status, 200, "metadata-only draft item projection: {metadata}");
+    assert_eq!(
+        status, 200,
+        "metadata-only draft item projection: {metadata}"
+    );
     assert!(!metadata.to_string().contains(note_text));
     let metadata_note = metadata["items"]
         .as_array()
@@ -159,7 +210,7 @@ fn served_production_owner_allows_edit_only_preview_and_recovers_exact_receipt_a
     assert_storage_files_hide(&fixture.directory, note_text);
 
     let (status, drafts_before_foreign) = call(
-        Arc::clone(&service),
+        Arc::clone(&management_service),
         Arc::clone(&auth),
         "read-token",
         "GET",
@@ -168,22 +219,24 @@ fn served_production_owner_allows_edit_only_preview_and_recovers_exact_receipt_a
     );
     assert_eq!(status, 200, "read owner drafts before foreign attempt");
     let (status, foreign_error) = call(
-        Arc::clone(&service),
+        Arc::clone(&management_service),
         Arc::clone(&auth),
         "foreign-edit-token",
         "POST",
         &run_path(&run, "context-owner-drafts"),
-        Some(&serde_json::to_vec(&ContextOwnerDraftCreateRequest {
-            request_id: "foreign.create.1".to_owned(),
-            draft_id: "draft.foreign".to_owned(),
-            ..create.clone()
-        })
-        .expect("foreign request JSON")),
+        Some(
+            &serde_json::to_vec(&ContextOwnerDraftCreateRequest {
+                request_id: "foreign.create.1".to_owned(),
+                draft_id: "draft.foreign".to_owned(),
+                ..create.clone()
+            })
+            .expect("foreign request JSON"),
+        ),
     );
     assert_eq!(status, 403, "foreign subject is refused: {foreign_error}");
     assert_eq!(error_code(&foreign_error), "context_owner_actor");
     let (status, drafts_after_foreign) = call(
-        Arc::clone(&service),
+        Arc::clone(&management_service),
         Arc::clone(&auth),
         "read-token",
         "GET",
@@ -191,9 +244,31 @@ fn served_production_owner_allows_edit_only_preview_and_recovers_exact_receipt_a
         None,
     );
     assert_eq!(status, 200, "read owner drafts after foreign attempt");
-    assert_eq!(drafts_after_foreign, drafts_before_foreign, "foreign actor wrote no draft revision");
+    assert_eq!(
+        drafts_after_foreign, drafts_before_foreign,
+        "foreign actor wrote no draft revision"
+    );
+    let (status, foreign_original_receipt) = call(
+        Arc::clone(&management_service),
+        Arc::clone(&auth),
+        "foreign-read-token",
+        "POST",
+        &run_path(&run, "context-owner-mutation-receipts/lookup"),
+        Some(
+            &serde_json::to_vec(&ContextOwnerMutationLookupRequest {
+                schema_version: CONTEXT_OWNER_MUTATION_LOOKUP_SCHEMA_VERSION.to_owned(),
+                request: ContextOwnerMutationRequest::CreateDraft(create.clone()),
+            })
+            .expect("foreign original-receipt lookup JSON"),
+        ),
+    );
+    assert_eq!(status, 200, "foreign workflow reader may query its run");
+    assert!(
+        foreign_original_receipt.is_null(),
+        "foreign actor cannot retrieve another subject's stored draft receipt"
+    );
     let (status, absent_receipt) = call(
-        Arc::clone(&service),
+        Arc::clone(&management_service),
         Arc::clone(&auth),
         "read-token",
         "POST",
@@ -201,19 +276,20 @@ fn served_production_owner_allows_edit_only_preview_and_recovers_exact_receipt_a
         Some(
             &serde_json::to_vec(&ContextOwnerMutationLookupRequest {
                 schema_version: CONTEXT_OWNER_MUTATION_LOOKUP_SCHEMA_VERSION.to_owned(),
-                request: ContextOwnerMutationRequest::CreateDraft(
-                    ContextOwnerDraftCreateRequest {
-                        request_id: "foreign.create.1".to_owned(),
-                        draft_id: "draft.foreign".to_owned(),
-                        ..create.clone()
-                    },
-                ),
+                request: ContextOwnerMutationRequest::CreateDraft(ContextOwnerDraftCreateRequest {
+                    request_id: "foreign.create.1".to_owned(),
+                    draft_id: "draft.foreign".to_owned(),
+                    ..create.clone()
+                }),
             })
             .expect("foreign lookup JSON"),
         ),
     );
     assert_eq!(status, 200);
-    assert!(absent_receipt.is_null(), "foreign attempt wrote no terminal receipt");
+    assert!(
+        absent_receipt.is_null(),
+        "foreign attempt wrote no terminal receipt"
+    );
 
     let lookup = ContextOwnerMutationLookupRequest {
         schema_version: CONTEXT_OWNER_MUTATION_LOOKUP_SCHEMA_VERSION.to_owned(),
@@ -233,14 +309,18 @@ fn served_production_owner_allows_edit_only_preview_and_recovers_exact_receipt_a
         &run_path(&run, "context-owner-mutation-receipts/lookup"),
         Some(&serde_json::to_vec(&lookup).expect("lookup request JSON")),
     );
-    assert_eq!(status, 200, "historical same-actor receipt recovery: {recovered}");
+    assert_eq!(
+        status, 200,
+        "historical same-actor receipt recovery: {recovered}"
+    );
     assert_eq!(
         receipt(&recovered),
         original_receipt,
         "restart recovery returns the original exact stored receipt without current association"
     );
     let directory = fixture.directory.clone();
-    drop(service);
+    drop(management_service);
     drop(fixture.owner);
+    assert_storage_files_hide(&directory, note_text);
     fs::remove_dir_all(&directory).expect("remove closed isolated owner database");
 }

@@ -133,3 +133,5 @@ pub use drafts::*;
 pub use receipt::{ContextControlCommand, ContextControlCommandKind, ContextControlReceipt};
 pub use support::{ContextControlReceiptRecovery, ContextOwnerPort, UnavailableContextOwnerPort};
 pub(crate) use support::{catalog_digest, validate_boundary, validate_grants, validate_limits};
+
+include!("context_owner_publication.rs");

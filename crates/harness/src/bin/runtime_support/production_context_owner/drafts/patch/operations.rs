@@ -1,16 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 fn apply_patch_operations(
-    owner: &Owner,
-    state: &mut OwnerDraftState,
-    stored: &mut StoredDraft,
-    actor: &AuthContext,
-    request: &ContextOwnerDraftPatchRequest,
+    context: &mut PatchOperationContext<'_>,
     operations: &[ContextOwnerDraftOperation],
-    registry: &BTreeMap<String, EligibleItem>,
-    active: Option<&(SourceIdentity, ContextSourceDocument, u64)>,
-    finite_horizon: Option<u64>,
-    now: u64,
 ) -> Result<(), ManagementError> {
     for operation in operations {
         match operation {
@@ -18,33 +10,20 @@ fn apply_patch_operations(
             | ContextOwnerDraftOperation::ExcludeItem { .. }
             | ContextOwnerDraftOperation::PinItem { .. }
             | ContextOwnerDraftOperation::UnpinItem { .. } => {
-                apply_selection_operation(stored, operation, registry, now)?;
+                apply_selection_operation(
+                    &mut *context.stored,
+                    operation,
+                    context.registry,
+                    context.now,
+                )?;
             }
             ContextOwnerDraftOperation::PutNote { .. }
             | ContextOwnerDraftOperation::RemoveNote { .. } => {
-                apply_note_operation(
-                    owner,
-                    state,
-                    stored,
-                    actor,
-                    &request.draft_id,
-                    operation,
-                    active,
-                    finite_horizon,
-                )?;
+                apply_note_operation(context, operation)?;
             }
             ContextOwnerDraftOperation::SetObjective { .. }
             | ContextOwnerDraftOperation::RemoveObjective => {
-                apply_objective_operation(
-                    owner,
-                    state,
-                    stored,
-                    actor,
-                    &request.draft_id,
-                    operation,
-                    active,
-                    finite_horizon,
-                )?;
+                apply_objective_operation(context, operation)?;
             }
         }
     }
@@ -64,12 +43,14 @@ fn apply_selection_operation(
         ContextOwnerDraftOperation::ExcludeItem { reference } => {
             exclude_item(stored, reference, registry)
         }
-        ContextOwnerDraftOperation::PinItem { item_id } => {
-            pin_item(stored, item_id, registry)
-        }
+        ContextOwnerDraftOperation::PinItem { item_id } => pin_item(stored, item_id, registry),
         ContextOwnerDraftOperation::UnpinItem { item_id } => {
             validate_identifier("context_item_id", item_id)?;
-            stored.envelope.draft.pinned_item_ids.retain(|id| id != item_id);
+            stored
+                .envelope
+                .draft
+                .pinned_item_ids
+                .retain(|id| id != item_id);
             Ok(())
         }
         _ => Err(ManagementError::invalid(
@@ -104,7 +85,9 @@ fn exclude_item(
     reference: &ContextItemRef,
     registry: &BTreeMap<String, EligibleItem>,
 ) -> Result<(), ManagementError> {
-    let item = registry.get(&item_key(reference)).ok_or_else(item_unavailable)?;
+    let item = registry
+        .get(&item_key(reference))
+        .ok_or_else(item_unavailable)?;
     if item.item.reference != *reference || item.item.protected {
         return Err(ManagementError::capability(
             "context_owner_item_protected",
@@ -112,12 +95,24 @@ fn exclude_item(
         ));
     }
     let before = stored.envelope.draft.selected_items.len();
-    stored.envelope.draft.selected_items.retain(|candidate| candidate != reference);
+    stored
+        .envelope
+        .draft
+        .selected_items
+        .retain(|candidate| candidate != reference);
     if before == stored.envelope.draft.selected_items.len() {
         return Err(item_unavailable());
     }
-    stored.envelope.draft.pinned_item_ids.retain(|id| id != &reference.item_id);
-    stored.envelope.draft.notes.retain(|note| note.reference != *reference);
+    stored
+        .envelope
+        .draft
+        .pinned_item_ids
+        .retain(|id| id != &reference.item_id);
+    stored
+        .envelope
+        .draft
+        .notes
+        .retain(|note| note.reference != *reference);
     Ok(())
 }
 
@@ -132,21 +127,34 @@ fn pin_item(
         .draft
         .selected_items
         .iter()
-        .find(|reference| &reference.item_id == item_id)
+        .find(|reference| reference.item_id == item_id)
     else {
         return Err(ManagementError::conflict(
             "context_owner_pin_not_selected",
             "a pin must name an item in the effective selected set",
         ));
     };
-    if registry.get(&item_key(reference)).is_none_or(|item| item.item.protected) {
+    if registry
+        .get(&item_key(reference))
+        .is_none_or(|item| item.item.protected)
+    {
         return Err(ManagementError::capability(
             "context_owner_pin_protected",
             "protected prerequisites cannot be pinned as model-visible items",
         ));
     }
-    if !stored.envelope.draft.pinned_item_ids.contains(item_id) {
-        stored.envelope.draft.pinned_item_ids.push(item_id.to_owned());
+    if !stored
+        .envelope
+        .draft
+        .pinned_item_ids
+        .iter()
+        .any(|pinned_id| pinned_id.as_str() == item_id)
+    {
+        stored
+            .envelope
+            .draft
+            .pinned_item_ids
+            .push(item_id.to_owned());
     }
     Ok(())
 }

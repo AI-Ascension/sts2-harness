@@ -1,5 +1,25 @@
 // SPDX-License-Identifier: MIT
 
+struct MutationReceiptInput<'a> {
+    actor: &'a AuthContext,
+    workflow_run_id: &'a str,
+    binding: &'a ContextOwnerBinding,
+    operation: &'a str,
+    request_id: String,
+    payload_digest: String,
+    result: ContextOwnerMutationResult,
+    now: u64,
+}
+
+struct AuthoredItemInput<'a> {
+    actor: &'a AuthContext,
+    item_id: &'a str,
+    kind: &'a str,
+    bytes: &'a [u8],
+    expires_at: u64,
+    source: SourceIdentity,
+}
+
 impl Owner {
     fn new_revision(
         &self,
@@ -26,17 +46,17 @@ impl Owner {
         })
     }
 
-    fn new_receipt(
-        &self,
-        actor: &AuthContext,
-        workflow_run_id: &str,
-        binding: &ContextOwnerBinding,
-        operation: &str,
-        request_id: String,
-        payload_digest: String,
-        result: ContextOwnerMutationResult,
-        now: u64,
-    ) -> ContextOwnerMutationReceipt {
+    fn new_receipt(&self, input: MutationReceiptInput<'_>) -> ContextOwnerMutationReceipt {
+        let MutationReceiptInput {
+            actor,
+            workflow_run_id,
+            binding,
+            operation,
+            request_id,
+            payload_digest,
+            result,
+            now,
+        } = input;
         ContextOwnerMutationReceipt {
             schema_version: CONTEXT_OWNER_MUTATION_RECEIPT_SCHEMA_VERSION.to_owned(),
             owner_id: self.configuration.owner_id.clone(),
@@ -58,13 +78,16 @@ impl Owner {
         &self,
         state: &mut OwnerDraftState,
         draft: &mut StoredDraft,
-        actor: &AuthContext,
-        item_id: &str,
-        kind: &str,
-        bytes: &[u8],
-        expires_at: u64,
-        source: SourceIdentity,
+        input: AuthoredItemInput<'_>,
     ) -> Result<ContextItemRef, ManagementError> {
+        let AuthoredItemInput {
+            actor,
+            item_id,
+            kind,
+            bytes,
+            expires_at,
+            source,
+        } = input;
         validate_identifier("context_item_id", item_id)?;
         validate_identifier("context_item_kind", kind)?;
         if bytes.is_empty()

@@ -2,8 +2,9 @@
 
 use std::net::SocketAddr;
 use std::path::Path;
+#[cfg(test)]
+use std::sync::RwLock;
 use std::sync::{Arc, Mutex};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 use sts2_harness::context_memory::policy_owner::{PolicyCommand, SavedPolicy, SavedPolicyRef};
@@ -28,8 +29,12 @@ use config::{
 mod archive;
 #[path = "runtime_v3_game_information_owner_authority.rs"]
 mod authority;
+#[path = "runtime_v3_game_information_owner_clock.rs"]
+mod clock_source;
 #[path = "runtime_v3_game_information_owner_config.rs"]
 mod config;
+pub(in crate::runtime_support) use clock_source::PolicyClockSource;
+use clock_source::RuntimePolicyClock;
 #[path = "runtime_v3_game_information_owner_management.rs"]
 mod management;
 #[path = "runtime_v3_game_information_preflight.rs"]
@@ -39,28 +44,28 @@ pub(super) use preflight::begin_memory_policy_preflight;
 pub(super) use preflight::{start_management_server, wait_for_owner_ready};
 
 #[cfg(test)]
+#[path = "runtime_v3_game_information_test_clock.rs"]
+mod test_clock;
+#[cfg(test)]
+pub(in crate::runtime_support) use test_clock::TestPolicyClock;
+#[cfg(test)]
+#[path = "runtime_v3_game_information_owner_test_support.rs"]
+mod test_support;
+
+#[cfg(test)]
 #[path = "runtime_v3_game_information_owner_tests.rs"]
 pub(super) mod owner_management_tests;
-
-struct RuntimePolicyClock;
-
-impl PolicyClock for RuntimePolicyClock {
-    fn now_seconds(&self) -> u64 {
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_or(u64::MAX, |duration| duration.as_secs())
-    }
-
-    fn now_timestamp(&self) -> String {
-        utc_timestamp(self.now_seconds())
-    }
-}
 
 /// Trusted runtime composition for the existing durable ContextMemory owner.
 /// It never imports, approves, or adopts a policy by itself.
 pub(super) struct RuntimeGameInformationOwner {
     pub(super) scope: MemoryScope,
     pub(super) owner: Arc<MemoryPolicyOwner>,
+    policy_clock: Arc<dyn PolicyClock>,
+    #[cfg(test)]
+    test_policy_clock: Option<Arc<TestPolicyClock>>,
+    #[cfg(test)]
+    test_adoption_barrier: RwLock<()>,
     pub(super) corpus_store: Mutex<DurableMemoryStore>,
     archive_store: Mutex<DurableMemoryStore>,
     pub(super) authenticator: Arc<dyn Authenticator>,
@@ -75,7 +80,10 @@ pub(super) struct RuntimeGameInformationOwner {
 }
 
 impl RuntimeGameInformationOwner {
-    pub(super) fn from_environment(expected_scope: MemoryScope) -> Result<Arc<Self>, String> {
+    pub(super) fn from_environment(
+        expected_scope: MemoryScope,
+        clock_source: PolicyClockSource,
+    ) -> Result<Arc<Self>, String> {
         ensure_private_sqlite_platform()?;
         let config_path = required_environment("STS2_LOOKUP_OWNER_CONFIG")?;
         let expected_sha256 = required_environment("STS2_LOOKUP_OWNER_CONFIG_SHA256")?;
@@ -85,6 +93,16 @@ impl RuntimeGameInformationOwner {
             ));
         }
         let (config, deployment_sha256) = read_config(Path::new(&config_path), &expected_sha256)?;
+        let policy_clock: Arc<dyn PolicyClock> = match &clock_source {
+            PolicyClockSource::System => Arc::new(RuntimePolicyClock),
+            #[cfg(test)]
+            PolicyClockSource::Test(clock) => clock.clone(),
+        };
+        #[cfg(test)]
+        let test_policy_clock = match &clock_source {
+            PolicyClockSource::System => None,
+            PolicyClockSource::Test(clock) => Some(clock.clone()),
+        };
         if config.schema != CONFIG_SCHEMA || config.scope != expected_scope {
             return Err(String::from(
                 "lookup owner configuration schema or runtime scope does not match",
@@ -130,7 +148,7 @@ impl RuntimeGameInformationOwner {
                 .map_err(|_| String::from("lookup owner authenticator configuration is invalid"))?,
         );
         let subject = format!("profile:{}", config.auth_profile);
-        let grants = deployment_grants(&config, &subject)?;
+        let grants = deployment_grants(&config, &subject, policy_clock.now_seconds())?;
 
         let corpus_key = read_key_environment("STS2_LOOKUP_CORPUS_STORE_KEY_HEX")?;
         let policy_key = read_key_environment("STS2_LOOKUP_POLICY_STORE_KEY_HEX")?;
@@ -161,7 +179,7 @@ impl RuntimeGameInformationOwner {
                     grants,
                 },
                 authenticator.clone(),
-                Arc::new(RuntimePolicyClock),
+                policy_clock.clone(),
             )
             .map_err(|_| String::from("lookup owner trusted configuration is invalid"))?,
         );
@@ -191,6 +209,11 @@ impl RuntimeGameInformationOwner {
         Ok(Arc::new(Self {
             scope: config.scope,
             owner,
+            policy_clock,
+            #[cfg(test)]
+            test_policy_clock,
+            #[cfg(test)]
+            test_adoption_barrier: RwLock::new(()),
             corpus_store: Mutex::new(corpus_store),
             archive_store: Mutex::new(archive_store),
             authenticator,
@@ -262,15 +285,15 @@ impl RuntimeGameInformationOwner {
     }
 
     pub(super) fn policy_now_seconds(&self) -> u64 {
-        RuntimePolicyClock.now_seconds()
+        self.policy_clock.now_seconds()
     }
 
-    pub(super) fn policy_now_timestamp() -> String {
-        RuntimePolicyClock.now_timestamp()
+    pub(super) fn policy_now_timestamp(&self) -> String {
+        self.policy_clock.now_timestamp()
     }
 
-    pub(super) fn policy_timestamp_after(seconds: u64) -> String {
-        utc_timestamp(RuntimePolicyClock.now_seconds().saturating_add(seconds))
+    pub(super) fn policy_timestamp_after(&self, seconds: u64) -> String {
+        utc_timestamp(self.policy_clock.now_seconds().saturating_add(seconds))
     }
 }
 

@@ -1,5 +1,26 @@
 // SPDX-License-Identifier: MIT
 
+struct PatchOperationContext<'a> {
+    owner: &'a Owner,
+    state: &'a mut OwnerDraftState,
+    stored: &'a mut StoredDraft,
+    actor: &'a AuthContext,
+    draft_id: &'a str,
+    registry: &'a BTreeMap<String, EligibleItem>,
+    active: Option<&'a (SourceIdentity, ContextSourceDocument, u64)>,
+    finite_horizon: Option<u64>,
+    now: u64,
+}
+
+struct PatchFinalization<'a> {
+    actor: &'a AuthContext,
+    snapshot: &'a sts2_harness::management::RunSnapshot,
+    binding: &'a ContextOwnerBinding,
+    request: &'a ContextOwnerDraftPatchRequest,
+    payload_digest: String,
+    now: u64,
+}
+
 impl Owner {
     pub(super) fn patch_draft_current(
         &self,
@@ -10,8 +31,11 @@ impl Owner {
         validate_patch_request(request)?;
         let payload_digest = request_digest(request)?;
         let mut current = self.current.lock().map_err(|_| owner_lock_error())?;
-        let entry = current.get_mut(&snapshot.workflow_run_id).ok_or_else(owner_unavailable)?;
-        let (mut state, record_version) = self.load_draft_state(entry, &snapshot.workflow_run_id)?;
+        let entry = current
+            .get_mut(&snapshot.workflow_run_id)
+            .ok_or_else(owner_unavailable)?;
+        let (mut state, record_version) =
+            self.load_draft_state(entry, &snapshot.workflow_run_id)?;
         if let Some(receipt) =
             self.existing_receipt(&state, actor, &request.request_id, &payload_digest)?
         {
@@ -33,18 +57,20 @@ impl Owner {
             .version
             .checked_add(1)
             .ok_or_else(owner_capacity)?;
-        apply_patch_operations(
-            self,
-            &mut state,
-            &mut stored,
-            actor,
-            request,
-            &request.operations,
-            &registry,
-            active.as_ref(),
-            finite_horizon,
-            now,
-        )?;
+        {
+            let mut context = PatchOperationContext {
+                owner: self,
+                state: &mut state,
+                stored: &mut stored,
+                actor,
+                draft_id: &request.draft_id,
+                registry: &registry,
+                active: active.as_ref(),
+                finite_horizon,
+                now,
+            };
+            apply_patch_operations(&mut context, &request.operations)?;
+        }
         prune_authored_items(&mut state, &mut stored, &request.draft_id);
         validate_patched_draft(self, actor, entry, &state, &stored, &binding, now)?;
         stored.envelope.draft.version = next_version;
@@ -54,13 +80,15 @@ impl Owner {
             entry,
             &mut state,
             record_version,
-            actor,
-            snapshot,
-            &binding,
-            request,
-            payload_digest,
+            PatchFinalization {
+                actor,
+                snapshot,
+                binding: &binding,
+                request,
+                payload_digest,
+                now,
+            },
             stored,
-            now,
         )?;
         Ok(receipt)
     }
@@ -70,14 +98,17 @@ impl Owner {
         entry: &mut Current,
         state: &mut OwnerDraftState,
         record_version: u64,
-        actor: &AuthContext,
-        snapshot: &sts2_harness::management::RunSnapshot,
-        binding: &ContextOwnerBinding,
-        request: &ContextOwnerDraftPatchRequest,
-        payload_digest: String,
+        finalization: PatchFinalization<'_>,
         stored: StoredDraft,
-        now: u64,
     ) -> Result<ContextOwnerMutationReceipt, ManagementError> {
+        let PatchFinalization {
+            actor,
+            snapshot,
+            binding,
+            request,
+            payload_digest,
+            now,
+        } = finalization;
         let revision = self.new_revision(
             state,
             actor,
@@ -86,20 +117,22 @@ impl Owner {
             now,
             stored.envelope.retention_expires_at,
         )?;
-        state.revisions.insert(revision.revision_id.clone(), revision);
+        state
+            .revisions
+            .insert(revision.revision_id.clone(), revision);
         state
             .drafts
             .insert(request.draft_id.clone(), stored.clone());
-        let receipt = self.new_receipt(
+        let receipt = self.new_receipt(MutationReceiptInput {
             actor,
-            &snapshot.workflow_run_id,
+            workflow_run_id: &snapshot.workflow_run_id,
             binding,
-            "patch_draft",
-            request.request_id.clone(),
+            operation: "patch_draft",
+            request_id: request.request_id.clone(),
             payload_digest,
-            ContextOwnerMutationResult::Draft(stored.envelope),
+            result: ContextOwnerMutationResult::Draft(stored.envelope),
             now,
-        );
+        });
         self.record_receipt(state, receipt.clone())?;
         self.persist_draft_state(entry, state, record_version)?;
         Ok(receipt)
@@ -118,10 +151,9 @@ fn current_patch_draft(
         .get(&request.draft_id)
         .cloned()
         .filter(|draft| draft.envelope.actor_subject == actor.subject)
-        .ok_or_else(|| ManagementError::invalid(
-            "context_draft_not_found",
-            "owner draft was not found",
-        ))?;
+        .ok_or_else(|| {
+            ManagementError::invalid("context_draft_not_found", "owner draft was not found")
+        })?;
     if stored.envelope.binding != *binding
         || stored.envelope.draft.version != request.expected_version
         || stored.envelope.draft.base_revision_id != entry.authority.state().active_revision_id
@@ -139,16 +171,20 @@ fn authorize_patch_grants(
     binding: &ContextOwnerBinding,
     operations: &[ContextOwnerDraftOperation],
 ) -> Result<(), ManagementError> {
-    let changes_objective = operations.iter().any(|operation| matches!(
-        operation,
-        ContextOwnerDraftOperation::SetObjective { .. }
-            | ContextOwnerDraftOperation::RemoveObjective
-    ));
-    let changes_other = operations.iter().any(|operation| !matches!(
-        operation,
-        ContextOwnerDraftOperation::SetObjective { .. }
-            | ContextOwnerDraftOperation::RemoveObjective
-    ));
+    let changes_objective = operations.iter().any(|operation| {
+        matches!(
+            operation,
+            ContextOwnerDraftOperation::SetObjective { .. }
+                | ContextOwnerDraftOperation::RemoveObjective
+        )
+    });
+    let changes_other = operations.iter().any(|operation| {
+        !matches!(
+            operation,
+            ContextOwnerDraftOperation::SetObjective { .. }
+                | ContextOwnerDraftOperation::RemoveObjective
+        )
+    });
     if changes_objective && !actor.can("workflow:context:objective:edit") {
         return Err(ManagementError::forbidden(
             "context_owner_objective_forbidden",
@@ -176,14 +212,16 @@ fn check_patch_horizon(
     operations: &[ContextOwnerDraftOperation],
     now: u64,
 ) -> Result<Option<u64>, ManagementError> {
-    let finite_horizon = active.as_ref().and_then(|(_, _, valid_until)| {
-        (*valid_until != u64::MAX).then_some(*valid_until)
+    let finite_horizon = active
+        .as_ref()
+        .and_then(|(_, _, valid_until)| (*valid_until != u64::MAX).then_some(*valid_until));
+    let adds_text = operations.iter().any(|operation| {
+        matches!(
+            operation,
+            ContextOwnerDraftOperation::PutNote { .. }
+                | ContextOwnerDraftOperation::SetObjective { .. }
+        )
     });
-    let adds_text = operations.iter().any(|operation| matches!(
-        operation,
-        ContextOwnerDraftOperation::PutNote { .. }
-            | ContextOwnerDraftOperation::SetObjective { .. }
-    ));
     if adds_text {
         let Some(valid_until) = finite_horizon else {
             return Err(ManagementError::capability(
@@ -226,16 +264,14 @@ fn validate_authored_retention(
 }
 
 fn draft_retains_authored_bytes(state: &OwnerDraftState, stored: &StoredDraft) -> bool {
-    stored
+    stored.envelope.draft.notes.iter().any(|note| {
+        state
+            .authored_items
+            .contains_key(&item_key(&note.reference))
+    }) || stored
         .envelope
         .draft
-        .notes
-        .iter()
-        .any(|note| state.authored_items.contains_key(&item_key(&note.reference)))
-        || stored
-            .envelope
-            .draft
-            .objective
-            .as_ref()
-            .is_some_and(|reference| state.authored_items.contains_key(&item_key(reference)))
+        .objective
+        .as_ref()
+        .is_some_and(|reference| state.authored_items.contains_key(&item_key(reference)))
 }

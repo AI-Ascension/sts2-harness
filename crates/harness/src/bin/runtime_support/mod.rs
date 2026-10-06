@@ -27,6 +27,21 @@ mod workflow_service;
 pub(crate) use config::RuntimeConfig;
 
 pub(crate) fn run(config: RuntimeConfig) -> Result<(), String> {
+    run_with_policy_clock_source(config, runtime_v3::PolicyClockSource::System)
+}
+
+#[cfg(test)]
+fn run_with_test_policy_clock(
+    config: RuntimeConfig,
+    clock: std::sync::Arc<runtime_v3::TestPolicyClock>,
+) -> Result<(), String> {
+    run_with_policy_clock_source(config, runtime_v3::PolicyClockSource::Test(clock))
+}
+
+fn run_with_policy_clock_source(
+    config: RuntimeConfig,
+    policy_clock_source: runtime_v3::PolicyClockSource,
+) -> Result<(), String> {
     let selector = RuntimeConfig::branch_continuation_selector()?;
     reconcile_continuation_startup(&config, selector.as_ref())?;
     if selector.is_some()
@@ -49,8 +64,14 @@ pub(crate) fn run(config: RuntimeConfig) -> Result<(), String> {
             | "runtime-v4-expert"
             | "runtime-v4-expert-rest-action"
     ) {
-        runtime_v3::run(config, selector)
+        runtime_v3::run(config, selector, policy_clock_source)
     } else {
+        #[cfg(test)]
+        if matches!(policy_clock_source, runtime_v3::PolicyClockSource::Test(_)) {
+            return Err(String::from(
+                "test policy clock is only supported by the Runtime-v3 test child",
+            ));
+        }
         mcp::run(config)
     }
 }

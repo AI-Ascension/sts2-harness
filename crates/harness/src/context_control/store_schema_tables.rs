@@ -116,12 +116,50 @@ CREATE TABLE IF NOT EXISTS context_control_owner_state (
     envelope_digest TEXT NOT NULL,
     updated_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS context_control_owner_publications (
+    run_id TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    source_version INTEGER NOT NULL CHECK (source_version > 0),
+    owner_index_digest TEXT NOT NULL,
+    actor_index_digest TEXT NOT NULL,
+    request_index_digest TEXT NOT NULL,
+    request_digest TEXT NOT NULL,
+    source_digest TEXT NOT NULL,
+    expected_owner_state_version INTEGER NOT NULL CHECK (expected_owner_state_version > 0),
+    resulting_owner_state_version INTEGER NOT NULL CHECK (resulting_owner_state_version > 0),
+    published_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL CHECK (expires_at > published_at),
+    receipt_envelope BLOB NOT NULL,
+    receipt_envelope_digest TEXT NOT NULL,
+    PRIMARY KEY (run_id, source_id, source_version),
+    UNIQUE (run_id, owner_index_digest, actor_index_digest, request_index_digest)
+);
+CREATE INDEX IF NOT EXISTS context_control_owner_publications_actor
+    ON context_control_owner_publications(run_id, owner_index_digest, actor_index_digest);
+CREATE TABLE IF NOT EXISTS context_control_active_publication_links (
+    run_id TEXT PRIMARY KEY NOT NULL,
+    source_id TEXT NOT NULL,
+    source_version INTEGER NOT NULL CHECK (source_version > 0),
+    source_digest TEXT NOT NULL,
+    owner_index_digest TEXT NOT NULL,
+    actor_index_digest TEXT NOT NULL,
+    request_index_digest TEXT NOT NULL,
+    request_digest TEXT NOT NULL,
+    publication_receipt_envelope_digest TEXT NOT NULL,
+    control_receipt_envelope_digest TEXT NOT NULL,
+    active_revision_id TEXT NOT NULL,
+    activated_at INTEGER NOT NULL,
+    envelope BLOB NOT NULL,
+    envelope_digest TEXT NOT NULL
+);
 "#;
 
 #[cfg(test)]
 mod tests {
-    use super::{MAX_RECEIPT_ENVELOPE_OVERHEAD, MAX_V1_RECEIPT_SCAN_BYTES};
-    use crate::context_control::{MAX_CONTROL_EVENTS, MAX_OWNER_RECEIPT_BYTES};
+    use super::{
+        MAX_CONTROL_EVENTS, MAX_OWNER_RECEIPT_BYTES, MAX_RECEIPT_ENVELOPE_OVERHEAD,
+        MAX_V1_RECEIPT_SCAN_BYTES,
+    };
 
     #[test]
     fn migration_receipt_scan_bound_covers_maximum_legacy_writer_history() {

@@ -53,6 +53,9 @@ mod expert;
 mod game_information_decision;
 #[path = "runtime_v3_game_information_owner.rs"]
 mod game_information_owner;
+pub(in crate::runtime_support) use game_information_owner::PolicyClockSource;
+#[cfg(test)]
+pub(in crate::runtime_support) use game_information_owner::TestPolicyClock;
 #[path = "runtime_v3_ledger.rs"]
 mod ledger;
 #[path = "runtime_v3_receipt_query.rs"]

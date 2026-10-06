@@ -355,4 +355,4 @@ fn replacement_owner_fences_the_old_live_handle() {
     cleanup(&path);
 }
 
-include!("context_control_migration_added.rs");
+include!("support/context_control_migration_added.rs");

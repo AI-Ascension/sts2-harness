@@ -2,14 +2,16 @@
 
 //! Authenticated management entry points for owner-local context drafts.
 
-use super::super::context_owner::{
+use super::super::super::context_owner::{
     ContextOwnerDraftCreateRequest, ContextOwnerDraftEnvelope, ContextOwnerDraftListView,
     ContextOwnerDraftOperation, ContextOwnerDraftPatchRequest, ContextOwnerItemsView,
     ContextOwnerMutationReceipt, ContextOwnerMutationRequest, ContextOwnerPreviewEnvelope,
     ContextOwnerPreviewRequest, ContextOwnerRevisionEnvelope, ContextOwnerRevisionPage,
 };
-use super::support::authorize;
-use super::{AuthContext, ManagementError, ManagementService, RunSnapshot, validate_identifier};
+use super::super::support::authorize;
+use super::super::{
+    AuthContext, ManagementError, ManagementService, RunSnapshot, validate_identifier,
+};
 
 impl ManagementService {
     pub fn eligible_context_owner_items(
@@ -113,7 +115,7 @@ impl ManagementService {
         limit: u64,
     ) -> Result<ContextOwnerRevisionPage, ManagementError> {
         let snapshot = self.context_owner_snapshot(actor, run_id, "workflow:read")?;
-        if !(1..=super::super::context_owner::MAX_CONTEXT_OWNER_PAGE_SIZE).contains(&limit) {
+        if !(1..=super::super::super::context_owner::MAX_CONTEXT_OWNER_PAGE_SIZE).contains(&limit) {
             return Err(ManagementError::invalid(
                 "context_revision_page_limit",
                 "revision page limit is outside the supported bound",

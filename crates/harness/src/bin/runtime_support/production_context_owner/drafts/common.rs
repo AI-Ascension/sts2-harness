@@ -1,46 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 impl Owner {
-    fn load_draft_state(
-        &self,
-        entry: &Current,
-        workflow_run_id: &str,
-    ) -> Result<(OwnerDraftState, u64), ManagementError> {
-        let Some(DurableOwnerContextState { record_version, bytes }) = entry
-            .store
-            .load_owner_context_state(&self.configuration.owner_id)
-            .map_err(store_error)?
-        else {
-            return Ok((
-                OwnerDraftState::empty(&self.configuration.owner_id, workflow_run_id),
-                0,
-            ));
-        };
-        let state: OwnerDraftState = serde_json::from_slice(&bytes)
-            .map_err(|_| state_corrupt())?;
-        state.validate(&self.configuration.owner_id, workflow_run_id)?;
-        Ok((state, record_version))
-    }
-
-    fn persist_draft_state(
-        &self,
-        entry: &mut Current,
-        state: &OwnerDraftState,
-        expected_version: u64,
-    ) -> Result<(), ManagementError> {
-        let bytes = state.encode()?;
-        entry
-            .store
-            .compare_exchange_owner_context_state(
-                &self.configuration.owner_id,
-                expected_version,
-                &bytes,
-            )
-            .map_err(store_error)?;
-        Ok(())
-    }
-
-    fn authorize_current_binding(
+    pub(super) fn authorize_current_binding(
         &self,
         actor: &AuthContext,
         snapshot: &sts2_harness::management::RunSnapshot,
@@ -53,6 +14,12 @@ impl Owner {
             return Err(ManagementError::forbidden(
                 "context_owner_draft_forbidden",
                 "actor cannot read owner context for this workflow run",
+            ));
+        }
+        if entry.actor != actor.subject {
+            return Err(ManagementError::forbidden(
+                "context_owner_actor",
+                "actor cannot read this context authority",
             ));
         }
         self.validate_source_entry(actor, snapshot, entry)?;
@@ -142,34 +109,62 @@ impl Owner {
             }
             return Ok(None);
         };
-        let advertised = self.advertised_source(&identity.source_id)?;
-        if advertised.version != identity.version
-            || advertised.digest != identity.digest
-            || validate_document(&source.document)? != advertised.digest
-            || record.base_source.as_ref().is_some_and(|base| {
-                base.source_id != identity.source_id
-                    || base.version != identity.version
-                    || base.digest != identity.digest
-            })
-        {
+        let (document, valid_until) = if identity.source_id.starts_with("ownerpub.") {
+            let now = unix_time()?;
+            let (publication, source) = self.load_active_publication(
+                entry,
+                &record.envelope.actor_subject,
+                &identity,
+                now,
+            )?;
+            if !super::super::publication_active::publication_binding_matches(
+                &publication.receipt.binding,
+                &record.envelope.binding,
+            ) {
+                return Err(ManagementError::conflict(
+                    "context_draft_source_stale",
+                    "active publication belongs to a different owner binding",
+                ));
+            }
+            let valid_until =
+                source_valid_until(&source.document).min(publication.receipt.expires_at);
+            (source.document, valid_until)
+        } else {
+            let advertised = self.advertised_source(&identity.source_id)?;
+            if advertised.version != identity.version
+                || advertised.digest != identity.digest
+                || validate_document(&source.document)? != advertised.digest
+            {
+                return Err(ManagementError::conflict(
+                    "context_draft_source_stale",
+                    "draft no longer has the exact advertised active source it was created from",
+                ));
+            }
+            let valid_until = source_valid_until(&source.document);
+            (source.document, valid_until)
+        };
+        if record.base_source.as_ref().is_some_and(|base| {
+            base.source_id != identity.source_id
+                || base.version != identity.version
+                || base.digest != identity.digest
+        }) {
             return Err(ManagementError::conflict(
                 "context_draft_source_stale",
                 "draft no longer has the exact advertised active source it was created from",
             ));
         }
-        let valid_until = source_valid_until(&source.document);
         Ok(Some((
             SourceIdentity {
                 source_id: identity.source_id,
                 version: identity.version,
                 digest: identity.digest,
             },
-            source.document,
+            document,
             valid_until,
         )))
     }
 
-    fn eligible_registry(
+    pub(super) fn eligible_registry(
         &self,
         entry: &Current,
         state: &OwnerDraftState,
@@ -178,10 +173,31 @@ impl Owner {
         let mut sources = self.configuration.sources.clone();
         sources.sort_by(|left, right| left.source_id.cmp(&right.source_id));
         let mut registry = BTreeMap::new();
+        if let Some((active, _)) = entry
+            .store
+            .active_context_source(&entry.authority.state().active_revision_id)
+            .map_err(store_error)?
+            .filter(|(active, _)| active.source_id.starts_with("ownerpub."))
+        {
+            let now = unix_time()?;
+            let (_, source) = self.load_active_publication(entry, &entry.actor, &active, now)?;
+            let identity = SourceIdentity {
+                source_id: active.source_id,
+                version: active.version,
+                digest: active.digest,
+            };
+            for item in source.document.items.into_values() {
+                insert_eligible(&mut registry, item, identity.clone())?;
+            }
+        }
         for advertised in sources {
             let Some(source) = entry
                 .store
-                .load_context_source(&advertised.source_id, advertised.version, &advertised.digest)
+                .load_context_source(
+                    &advertised.source_id,
+                    advertised.version,
+                    &advertised.digest,
+                )
                 .map_err(store_error)?
             else {
                 continue;
@@ -233,54 +249,5 @@ impl Owner {
             }
         }
         Ok(registry)
-    }
-
-    fn existing_receipt(
-        &self,
-        state: &OwnerDraftState,
-        actor: &AuthContext,
-        request_id: &str,
-        payload_digest: &str,
-    ) -> Result<Option<ContextOwnerMutationReceipt>, ManagementError> {
-        let Some(receipts) = state.receipts.get(&actor.subject) else {
-            return Ok(None);
-        };
-        let Some(stored) = receipts.get(request_id) else {
-            return Ok(None);
-        };
-        if stored.payload_digest != payload_digest {
-            return Err(ManagementError::conflict(
-                "context_owner_request_id_reused",
-                "request identity was already used with a different canonical payload",
-            ));
-        }
-        Ok(Some(stored.receipt.clone()))
-    }
-
-    fn record_receipt(
-        &self,
-        state: &mut OwnerDraftState,
-        receipt: ContextOwnerMutationReceipt,
-    ) -> Result<(), ManagementError> {
-        let actor_receipts = state
-            .receipts
-            .entry(receipt.actor_subject.clone())
-            .or_default();
-        if actor_receipts.len() >= MAX_RECEIPTS_PER_ACTOR
-            && !actor_receipts.contains_key(&receipt.request_id)
-        {
-            return Err(ManagementError::unavailable(
-                "context_owner_receipt_capacity",
-                "owner mutation receipt history is at its bounded capacity",
-            ));
-        }
-        actor_receipts.insert(
-            receipt.request_id.clone(),
-            StoredReceipt {
-                payload_digest: receipt.payload_digest.clone(),
-                receipt,
-            },
-        );
-        Ok(())
     }
 }

@@ -2,11 +2,11 @@
 
 //! Encrypted, compare-and-swap storage for additive context-owner drafts.
 
-use super::store::ContextControlStore;
-use super::store_schema::{digest, now_seconds};
-use super::store_types::{
+use super::super::store_schema::{digest, now_seconds};
+use super::super::store_types::{
     DurableControlStoreError, DurableOwnerContextState, MAX_OWNER_CONTEXT_STATE_BYTES,
 };
+use super::ContextControlStore;
 use rusqlite::{OptionalExtension, TransactionBehavior, params};
 
 impl ContextControlStore {
@@ -142,7 +142,7 @@ impl ContextControlStore {
             }
             _ => return Err(DurableControlStoreError::OwnerContextConflict),
         }
-        if self.failpoint == Some(super::store_types::DurableStoreFailpoint::BeforeCommit) {
+        if self.failpoint == Some(super::super::store_types::DurableStoreFailpoint::BeforeCommit) {
             self.failpoint = None;
             return Err(DurableControlStoreError::Failpoint);
         }

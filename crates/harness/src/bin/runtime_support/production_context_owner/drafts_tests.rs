@@ -14,15 +14,17 @@ use sts2_harness::context_control::{
 use sts2_harness::management::{
     Authenticator, Budget, CONTEXT_OWNER_DRAFT_PATCH_SCHEMA_VERSION,
     CONTEXT_OWNER_DRAFT_REQUEST_SCHEMA_VERSION, CONTEXT_OWNER_MUTATION_LOOKUP_SCHEMA_VERSION,
-    CONTEXT_OWNER_PREVIEW_REQUEST_SCHEMA_VERSION, CONTEXT_SOURCE_ADOPTION_SCHEMA_VERSION,
+    CONTEXT_OWNER_PREVIEW_REQUEST_SCHEMA_VERSION, CONTEXT_OWNER_PUBLICATION_LOOKUP_SCHEMA_VERSION,
+    CONTEXT_OWNER_PUBLICATION_REQUEST_SCHEMA_VERSION, CONTEXT_SOURCE_ADOPTION_SCHEMA_VERSION,
     CleanupState, ContextBindingRequest, ContextBindingSource, ContextControlCommand,
     ContextOwnerDraftCreateRequest, ContextOwnerDraftOperation, ContextOwnerDraftPatchRequest,
-    ContextOwnerMutationLookupRequest, ContextOwnerMutationReceipt, ContextOwnerMutationRequest,
-    ContextOwnerMutationResult, ContextOwnerPreviewRequest, ContextSourceAdoptionRequest, Cursor,
-    EVENT_SCHEMA_VERSION, EventClassification, EventPayload, EventType, GameOutcome,
-    MANAGEMENT_SCHEMA_VERSION, ManagementServer, ManagementService, MemoryWorkflowStore,
-    RUN_SCHEMA_VERSION, RunEvent, RunSnapshot, ServerConfig, StaticAuthenticator,
-    WorkflowRunStatus, WorkflowStore,
+    ContextOwnerDraftPublicationLookupRequest, ContextOwnerDraftPublicationReceipt,
+    ContextOwnerDraftPublicationRequest, ContextOwnerMutationLookupRequest,
+    ContextOwnerMutationReceipt, ContextOwnerMutationRequest, ContextOwnerMutationResult,
+    ContextOwnerPreviewRequest, ContextSourceAdoptionRequest, Cursor, EVENT_SCHEMA_VERSION,
+    EventClassification, EventPayload, EventType, GameOutcome, MANAGEMENT_SCHEMA_VERSION,
+    ManagementClient, ManagementServer, ManagementService, MemoryWorkflowStore, RUN_SCHEMA_VERSION,
+    RunEvent, RunSnapshot, ServerConfig, StaticAuthenticator, WorkflowRunStatus, WorkflowStore,
 };
 use sts2_harness::{
     ActionKind, DecisionInput, EpisodeLegalAction, EpisodeLegalActionSet, EpisodeObservation,
@@ -47,6 +49,11 @@ struct OwnerFixture {
 
 include!("drafts_tests/fixture.rs");
 include!("drafts_tests/http_support.rs");
-include!("drafts_tests/served_flow.rs");
+include!("drafts_tests/served_flow_tests.rs");
 include!("drafts_tests/grant_boundaries.rs");
 include!("drafts_tests/render_identity.rs");
+include!("drafts_tests/patch_http_validation.rs");
+include!("drafts_tests/publication_test_support.rs");
+include!("drafts_tests/publication_served_tests.rs");
+include!("drafts_tests/publication_adoption_replay_tests.rs");
+include!("drafts_tests/publication_create_draft_tests.rs");

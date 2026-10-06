@@ -24,6 +24,8 @@ mod response;
 mod routes;
 #[path = "http_routes_context_owner.rs"]
 mod routes_context_owner;
+#[path = "http_routes_context_owner_publication.rs"]
+mod routes_context_owner_publication;
 #[path = "http_routes_effective_limits.rs"]
 mod routes_effective_limits;
 #[path = "http_routes_lifecycle.rs"]

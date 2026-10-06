@@ -19,13 +19,44 @@ fn runtime_entry_child() {
     }
     let config = crate::runtime_support::RuntimeConfig::from_environment()
         .expect("the isolated child receives a complete runtime configuration");
-    crate::runtime_support::run(config)
-        .expect("the actual runtime entry completes the adopted game-information episode");
+    let rollback_after_adoption =
+        std::env::var("STS2_TEST_LOOKUP_POLICY_CLOCK").as_deref() == Ok("rollback-after-adoption");
+    let clock = if rollback_after_adoption {
+        TestPolicyClock::rollback_after_adoption()
+    } else {
+        assert_eq!(
+            std::env::var("STS2_TEST_LOOKUP_POLICY_CLOCK").as_deref(),
+            Ok("fixed-100"),
+            "the isolated child receives an explicit deterministic clock mode"
+        );
+        TestPolicyClock::fixed(100)
+    };
+    let result = crate::runtime_support::run_with_test_policy_clock(config, clock.clone());
+    if rollback_after_adoption {
+        let error = result.expect_err("the actual owner must refuse a backward approval clock");
+        assert_eq!(
+            error,
+            "lookup-policy owner could not validate its current durable selection"
+        );
+        assert_eq!(clock.current_seconds(), 99);
+        assert!(
+            clock.observed_grant_revoked_preflight(),
+            "the served post-adoption preflight must see typed GrantRevoked"
+        );
+    } else {
+        result.expect("the actual runtime entry completes the adopted game-information episode");
+        assert_eq!(clock.current_seconds(), 100);
+    }
 }
 
 #[test]
 fn runtime_entry_adopts_delivers_and_replays_game_information_with_scripted_mcp_peer() {
     run_runtime_entry(EntryMode::Scripted);
+}
+
+#[test]
+fn runtime_entry_refuses_served_adoption_after_policy_clock_rollback_before_effects() {
+    run_runtime_entry(EntryMode::ScriptedClockRollback);
 }
 
 #[test]
@@ -63,6 +94,7 @@ fn runtime_entry_reports_not_observable_bootstrap_as_missing_capability_without_
 #[derive(Clone, Copy)]
 enum EntryMode {
     Scripted,
+    ScriptedClockRollback,
     RealPeers { negative: PeerNegative },
 }
 
@@ -70,11 +102,16 @@ impl EntryMode {
     const fn negative(self) -> Option<PeerNegative> {
         match self {
             Self::Scripted
+            | Self::ScriptedClockRollback
             | Self::RealPeers {
                 negative: PeerNegative::None,
             } => None,
             Self::RealPeers { negative } => Some(negative),
         }
+    }
+
+    const fn rollback_after_adoption(self) -> bool {
+        matches!(self, Self::ScriptedClockRollback)
     }
 }
 
@@ -92,7 +129,7 @@ fn run_runtime_entry(mode: EntryMode) {
     let agent_log = &fixture.agent_log;
     let agent_script = &fixture.agent_script;
 
-    let gateway = if matches!(mode, EntryMode::Scripted) {
+    let gateway = if matches!(mode, EntryMode::Scripted | EntryMode::ScriptedClockRollback) {
         let listener = TcpListener::bind("127.0.0.1:0").expect("synthetic gateway listener");
         listener
             .set_nonblocking(true)
@@ -102,20 +139,20 @@ fn run_runtime_entry(mode: EntryMode) {
         None
     };
     let gateway_binary = match mode {
-        EntryMode::Scripted => None,
+        EntryMode::Scripted | EntryMode::ScriptedClockRollback => None,
         EntryMode::RealPeers { .. } => Some(
             live_peers::pinned_binary("STS2_GATEWAY_BINARY")
                 .expect("exact Gateway binary for real-peer acceptance"),
         ),
     };
     let mcp_binary = match mode {
-        EntryMode::Scripted => mcp_script.clone(),
+        EntryMode::Scripted | EntryMode::ScriptedClockRollback => mcp_script.clone(),
         EntryMode::RealPeers { .. } => {
             live_peers::pinned_binary("STS2_MCP_BINARY").expect("exact MCP binary")
         }
     };
     let runtime_binary = match mode {
-        EntryMode::Scripted => None,
+        EntryMode::Scripted | EntryMode::ScriptedClockRollback => None,
         EntryMode::RealPeers { .. } => Some(
             live_peers::pinned_binary("STS2_HARNESS_RUNTIME_BINARY")
                 .expect("shipped harness runtime binary"),
@@ -130,7 +167,7 @@ fn run_runtime_entry(mode: EntryMode) {
     let config_path = &fixture.config_path;
     let archive_path = &fixture.archive_path;
 
-    let replay_modes: &[bool] = if mode.negative().is_some() {
+    let replay_modes: &[bool] = if mode.negative().is_some() || mode.rollback_after_adoption() {
         &[false]
     } else {
         &[false, true]
@@ -192,6 +229,7 @@ fn run_runtime_entry(mode: EntryMode) {
             &execution_path,
             &branch_path,
             replay,
+            mode,
         );
         let client = wait_for_management(management_address);
 
@@ -219,6 +257,50 @@ fn run_runtime_entry(mode: EntryMode) {
                 "entry-first"
             },
         );
+
+        if mode.rollback_after_adoption() {
+            let output = finish_child(child);
+            assert!(
+                output.status.success(),
+                "the child test must observe the actual typed preflight refusal: {}",
+                String::from_utf8_lossy(&output.stdout)
+            );
+            let child_stdout = String::from_utf8_lossy(&output.stdout);
+            assert!(
+                child_stdout.lines().any(|line| line == "running 1 test"),
+                "the child must run only the selected exact helper test: {child_stdout}"
+            );
+            let expected_child_result = format!("test {CHILD_TEST} ... ok");
+            assert!(
+                child_stdout
+                    .lines()
+                    .any(|line| line == expected_child_result),
+                "the selected child helper must pass: {child_stdout}"
+            );
+            assert!(
+                child_stdout.lines().any(|line| {
+                    line.starts_with("test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured;")
+                }),
+                "the child must report exactly one successful test: {child_stdout}"
+            );
+            match gateway
+                .as_ref()
+                .expect("scripted gateway listener")
+                .accept()
+            {
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
+                Err(error) => panic!("unexpected gateway preflight probe error: {error}"),
+                Ok((_stream, _)) => {
+                    panic!("runtime performed a gateway effect after clock rollback refusal")
+                }
+            }
+            assert!(read_json_lines(mcp_log).is_empty(), "MCP must not start");
+            assert!(
+                read_json_lines(agent_log).is_empty(),
+                "the agent must not start"
+            );
+            continue;
+        }
 
         let gateway_worker = gateway.as_ref().map(|listener| {
             let copy = listener.try_clone().expect("clone gateway listener");
@@ -249,13 +331,18 @@ fn run_runtime_entry(mode: EntryMode) {
             archive_path,
             scope: &scope,
             replay,
-            scripted: matches!(mode, EntryMode::Scripted),
+            scripted: matches!(mode, EntryMode::Scripted | EntryMode::ScriptedClockRollback),
         });
     }
 }
 
 #[path = "runtime_v3_game_information_entry_assertions.rs"]
 mod assertions;
+#[path = "runtime_v3_game_information_entry_child.rs"]
+mod child;
+#[path = "runtime_v3_game_information_entry_child_output.rs"]
+mod child_output;
+use child::{RuntimeChild, finish_child};
 #[path = "runtime_v3_game_information_entry_fixture_setup.rs"]
 mod fixture_setup;
 #[path = "runtime_v3_game_information_entry_gateway.rs"]
@@ -277,6 +364,6 @@ use gateway::serve_gateway;
 use live_peers::PeerNegative;
 use loopback::reserve;
 use support::{
-    explicit_revalidation_approval_and_adoption, finish_child, start_runtime_child,
+    explicit_revalidation_approval_and_adoption, read_json_lines, start_runtime_child,
     wait_for_management, write_owner_config, write_private,
 };

@@ -74,9 +74,9 @@ pub(super) fn persist_owner_receipt(
     run_id: &str,
     key: &[u8; 32],
     receipt: Option<PreparedOwnerReceipt>,
-) -> Result<(), DurableControlStoreError> {
+) -> Result<Option<String>, DurableControlStoreError> {
     let Some(receipt) = receipt else {
-        return Ok(());
+        return Ok(None);
     };
     let existing_command = transaction
         .query_row(
@@ -137,8 +137,10 @@ pub(super) fn persist_owner_receipt(
         if bytes != receipt.plaintext {
             return Err(DurableControlStoreError::OwnerReceiptConflict);
         }
+        Ok(Some(envelope_digest))
     } else {
         let envelope_digest = digest(&receipt.envelope);
+        let selected_digest = envelope_digest.clone();
         transaction
             .execute(
                 "INSERT INTO context_control_owner_receipts
@@ -155,8 +157,8 @@ pub(super) fn persist_owner_receipt(
                 ],
             )
             .map_err(|_| DurableControlStoreError::Sqlite)?;
+        Ok(Some(selected_digest))
     }
-    Ok(())
 }
 
 impl ContextControlStore {

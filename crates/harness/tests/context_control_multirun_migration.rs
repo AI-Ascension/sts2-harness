@@ -39,8 +39,8 @@ fn authority(run_id: &str) -> ControlAuthority {
             configuration_sha256: "c".repeat(64),
             output_schema_sha256: "d".repeat(64),
             controller_epoch: 1,
-            gate_epoch: 0,
-            control_version: 0,
+            gate_epoch: 1,
+            control_version: 1,
         },
         "revision-1",
     )
@@ -216,6 +216,10 @@ fn persist_pause_receipt(
         command: command.clone(),
         receipt,
     };
+    record
+        .receipt
+        .validate_for(&record.binding, &command)
+        .expect("migration fixture receipt matches its pause command");
     store
         .persist_with_owner_control_receipt(&paused, StoreMode::Enabled, &record)
         .expect("persist run-scoped encrypted control receipt");
@@ -324,7 +328,7 @@ fn migration_authenticates_one_run_and_preserves_other_runs_with_independent_key
                 .expect("A source exists")
                 .document
                 .draft
-                .id,
+                .draft_id,
             "draft-run-a"
         );
     }
@@ -347,7 +351,7 @@ fn migration_authenticates_one_run_and_preserves_other_runs_with_independent_key
                 .expect("B source exists")
                 .document
                 .draft
-                .id,
+                .draft_id,
             "draft-run-b"
         );
         assert!(
@@ -379,4 +383,4 @@ fn migration_authenticates_one_run_and_preserves_other_runs_with_independent_key
     cleanup(&path);
 }
 
-include!("context_control_multirun_failures.rs");
+include!("support/context_control_multirun_failures.rs");

@@ -1,11 +1,28 @@
 // SPDX-License-Identifier: MIT
 
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+
 fn owner_fixture() -> OwnerFixture {
     let directory = std::env::temp_dir().join(format!(
         "production-context-owner-drafts-{}",
         uuid::Uuid::new_v4()
     ));
-    fs::create_dir_all(&directory).expect("create isolated owner database directory");
+    fs::create_dir(&directory).expect("create isolated owner database directory");
+    #[cfg(unix)]
+    {
+        fs::set_permissions(&directory, fs::Permissions::from_mode(0o700))
+            .expect("restrict isolated owner database directory");
+        assert_eq!(
+            fs::metadata(&directory)
+                .expect("inspect isolated owner database directory")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o700,
+            "owner fixture lives in a private Unix directory"
+        );
+    }
 
     let observation = EpisodeObservation::new(
         "combat-1",
@@ -27,8 +44,9 @@ fn owner_fixture() -> OwnerFixture {
     let actions = EpisodeLegalActionSet::new(
         "combat-1",
         1,
-        vec![EpisodeLegalAction::new("combat.end-turn", ActionKind::EndTurn)
-            .expect("legal action")],
+        vec![
+            EpisodeLegalAction::new("combat.end-turn", ActionKind::EndTurn).expect("legal action"),
+        ],
     )
     .expect("synthetic legal-action catalog");
     let now = unix_time().expect("clock");
@@ -134,6 +152,20 @@ fn owner_fixture() -> OwnerFixture {
         StoreMode::Enabled,
     )
     .expect("encrypted owner store");
+    #[cfg(unix)]
+    {
+        fs::set_permissions(&store_path, fs::Permissions::from_mode(0o600))
+            .expect("restrict SQLite owner-store file");
+        assert_eq!(
+            fs::metadata(&store_path)
+                .expect("inspect SQLite owner-store file")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600,
+            "SQLite owner-store file is private"
+        );
+    }
     owner.current.lock().expect("owner lock").insert(
         workflow_run_id.clone(),
         Current {

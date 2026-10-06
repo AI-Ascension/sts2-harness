@@ -24,7 +24,7 @@ struct StoredDraft {
     authored_item_keys: Vec<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SourceIdentity {
     source_id: String,
@@ -154,8 +154,7 @@ impl OwnerDraftState {
             if key != &item_key(&authored.item.reference)
                 || !authored.item.reference.valid()
                 || authored.item.bytes.is_empty()
-                || sts2_harness::sha256_hex(&authored.item.bytes)
-                    != authored.item.reference.sha256
+                || sts2_harness::sha256_hex(&authored.item.bytes) != authored.item.reference.sha256
                 || authored.created_by.is_empty()
                 || authored.item.expires_at == 0
             {
@@ -166,9 +165,12 @@ impl OwnerDraftState {
     }
 
     fn encode(&self) -> Result<Vec<u8>, ManagementError> {
-        let bytes = serde_json::to_vec(self)
-            .map_err(|error| ManagementError::unavailable("context_owner_state_encode", error.to_string()))?;
-        if bytes.is_empty() || bytes.len() > sts2_harness::context_control::MAX_OWNER_CONTEXT_STATE_BYTES {
+        let bytes = serde_json::to_vec(self).map_err(|error| {
+            ManagementError::unavailable("context_owner_state_encode", error.to_string())
+        })?;
+        if bytes.is_empty()
+            || bytes.len() > sts2_harness::context_control::MAX_OWNER_CONTEXT_STATE_BYTES
+        {
             return Err(ManagementError::unavailable(
                 "context_owner_state_too_large",
                 "owner draft history reached its bounded durable capacity",

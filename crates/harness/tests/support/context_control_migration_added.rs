@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-fn authority_for(run_id: &str) -> ControlAuthority {
-    let mut boundary = boundary();
-    boundary.run_id = run_id.to_owned();
-    ControlAuthority::new(boundary, "revision-1")
-}
-
 fn mark_v1(path: &PathBuf) {
     let connection = rusqlite::Connection::open(path).expect("open schema marker");
     connection
@@ -104,9 +98,26 @@ fn schema_v1_migration_preserves_encrypted_journal_and_source_bytes() {
 
     let migrated =
         ContextControlStore::open(&path, key, "run-migration").expect("migrate v1 store");
+    let mut expected_boundary = authority.state().boundary.clone();
+    expected_boundary.controller_epoch = expected_boundary
+        .controller_epoch
+        .checked_add(1)
+        .expect("recovered owner epoch advances");
+    let expected = ControlAuthority::new(
+        expected_boundary,
+        authority.state().active_revision_id.clone(),
+    )
+    .with_max_control_events(authority.max_control_events())
+    .expect("retain the selected event bound");
+    let recovered = migrated.load().expect("old journal AAD still works");
     assert_eq!(
-        migrated.load().expect("old journal AAD still works"),
-        authority
+        recovered.state().boundary.controller_epoch,
+        authority.state().boundary.controller_epoch + 1,
+        "recovery advances exactly one owner epoch to fence the previous handle"
+    );
+    assert_eq!(
+        recovered, expected,
+        "journal state is preserved across owner fencing"
     );
     assert_eq!(
         migrated

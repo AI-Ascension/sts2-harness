@@ -86,7 +86,7 @@ pub(super) fn authenticate_v1_before_migration(
 }
 
 fn database_has_run_data(connection: &Connection) -> Result<bool, DurableControlStoreError> {
-    const TABLES: [&str; 9] = [
+    const TABLES: [&str; 11] = [
         "context_control_journal",
         "context_control_owners",
         "context_control_outbox",
@@ -96,6 +96,8 @@ fn database_has_run_data(connection: &Connection) -> Result<bool, DurableControl
         "context_control_active_context_source",
         "context_control_lifetime",
         "context_control_owner_state",
+        "context_control_owner_publications",
+        "context_control_active_publication_links",
     ];
     for table in TABLES {
         if !table_exists(connection, table)? {

@@ -20,6 +20,7 @@ impl Drop for MemoryPolicyPreflight {
 
 pub(in crate::runtime_support::runtime_v3) fn begin_memory_policy_preflight(
     runtime_config: &super::super::RuntimeConfig,
+    clock_source: PolicyClockSource,
 ) -> Result<Option<MemoryPolicyPreflight>, String> {
     if !runtime_config.lookup_binding_enabled()? {
         return Ok(None);
@@ -31,7 +32,7 @@ pub(in crate::runtime_support::runtime_v3) fn begin_memory_policy_preflight(
         runtime_config.episode_id.clone(),
         agent_id,
     );
-    let owner = RuntimeGameInformationOwner::from_environment(expected_scope)?;
+    let owner = RuntimeGameInformationOwner::from_environment(expected_scope, clock_source)?;
     let server = start_management_server(&owner)?;
     if let Err(error) = wait_for_owner_ready(&owner, owner.preflight_timeout_seconds()) {
         let _ = server.shutdown();
@@ -74,7 +75,10 @@ pub(in crate::runtime_support::runtime_v3) fn wait_for_owner_ready(
                 | PolicyOwnerError::OwnerFenced
                 | PolicyOwnerError::StaleReview,
             ) => {}
-            Err(_) => {
+            Err(error) => {
+                #[cfg(test)]
+                owner.test_clock_record_preflight_refusal(&error);
+                let _ = error;
                 return Err(String::from(
                     "lookup-policy owner could not validate its current durable selection",
                 ));

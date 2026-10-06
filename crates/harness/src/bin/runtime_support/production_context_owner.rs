@@ -29,6 +29,12 @@ mod drafts;
 mod lease_fence;
 #[path = "production_context_owner/observation.rs"]
 mod observation;
+#[path = "production_context_owner/publication.rs"]
+mod publication;
+#[path = "production_context_owner/publication_active.rs"]
+mod publication_active;
+#[path = "production_context_owner/publication_adoption.rs"]
+mod publication_adoption;
 #[path = "production_context_owner/source.rs"]
 mod source;
 #[path = "production_context_owner/source_status.rs"]

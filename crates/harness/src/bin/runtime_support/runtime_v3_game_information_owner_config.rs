@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: MIT
 
-use super::RuntimePolicyClock;
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use sts2_harness::context_memory::{
     MemoryScope,
-    policy_owner::{PolicyClock, PolicyGrant, PolicyPermission},
+    policy_owner::{PolicyGrant, PolicyPermission},
 };
 
 const MAX_CONFIG_BYTES: usize = 64 * 1024;
@@ -51,6 +50,7 @@ pub(super) struct DeploymentGrant {
 pub(super) fn deployment_grants(
     config: &DeploymentConfig,
     authenticated_subject: &str,
+    now: u64,
 ) -> Result<BTreeMap<String, PolicyGrant>, String> {
     if config.grants.is_empty() || config.grants.len() > 64 {
         return Err(String::from(
@@ -63,7 +63,7 @@ pub(super) fn deployment_grants(
             || !valid_id(&grant.subject)
             || grant.epoch == 0
             || grant.epoch > 9_007_199_254_740_991
-            || grant.expires_at <= RuntimePolicyClock.now_seconds()
+            || grant.expires_at <= now
             || grant.permissions.is_empty()
         {
             return Err(String::from(

@@ -10,7 +10,7 @@ use super::store_render_sources::source_aad;
 use super::store_types::{
     CURRENT_CONTEXT_CONTROL_SCHEMA_VERSION, DurableControlStoreError, LEGACY_STORE_SCHEMA,
     MAX_CONTEXT_SOURCE_BYTES, MAX_EVENT_BYTES, MAX_EVENTS, MAX_JOURNAL_BYTES,
-    MAX_OWNER_RECEIPT_BYTES, STORE_SCHEMA,
+    MAX_OWNER_RECEIPT_BYTES, STORE_SCHEMA, V2_STORE_SCHEMA,
 };
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use sha2::{Digest, Sha256};
@@ -135,6 +135,27 @@ pub(super) fn ensure_schema(
         if schema_updated != 1 || version_updated != 1 {
             return Err(DurableControlStoreError::Incompatible);
         }
+    } else if schema == V2_STORE_SCHEMA && version == 2 {
+        // Publication receipts and activation links are additive. The v2 journal, owner state,
+        // source snapshots, and control-receipt ciphertext remain byte-for-byte untouched.
+        transaction
+            .execute_batch(SCHEMA)
+            .map_err(|_| DurableControlStoreError::Sqlite)?;
+        let schema_updated = transaction
+            .execute(
+                "UPDATE context_control_meta SET value = ?1 WHERE key = 'schema' AND value = ?2",
+                params![STORE_SCHEMA, V2_STORE_SCHEMA],
+            )
+            .map_err(|_| DurableControlStoreError::Sqlite)?;
+        let version_updated = transaction
+            .execute(
+                "UPDATE context_control_meta SET value = ?1 WHERE key = 'schema_version' AND value = '2'",
+                [CURRENT_CONTEXT_CONTROL_SCHEMA_VERSION.to_string()],
+            )
+            .map_err(|_| DurableControlStoreError::Sqlite)?;
+        if schema_updated != 1 || version_updated != 1 {
+            return Err(DurableControlStoreError::Incompatible);
+        }
     } else if schema != STORE_SCHEMA || version != CURRENT_CONTEXT_CONTROL_SCHEMA_VERSION {
         return Err(DurableControlStoreError::Incompatible);
     } else {
@@ -149,9 +170,9 @@ pub(super) fn ensure_schema(
     Ok(())
 }
 
-/// Authenticate every encrypted v1 record for the requested existing run before `ensure_schema`
-/// changes the database-global marker. Other runs can use independent keys; their bytes remain
-/// untouched and are not claimed as authenticated by this migration. Work is bounded per run.
+// The included migration authenticates every encrypted v1 record for the requested existing run
+// before `ensure_schema` changes the database-global marker. Other runs can use independent keys;
+// their bytes remain untouched and are not claimed as authenticated. Work is bounded per run.
 
 include!("store_schema_migration.rs");
 include!("store_schema_tables.rs");

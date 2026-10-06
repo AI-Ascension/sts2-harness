@@ -68,12 +68,12 @@ pub(super) fn read_request(
             "GET requests cannot carry a body",
         ));
     }
-    if (method == "POST" || method == "PUT")
+    if (method == "POST" || method == "PUT" || method == "PATCH")
         && headers.get("content-type").map(String::as_str) != Some("application/json")
     {
         return Err(HttpError::new(
             "content_type_required",
-            "POST and PUT requests require Content-Type: application/json",
+            "POST, PUT, and PATCH requests require Content-Type: application/json",
         ));
     }
     let mut body = bytes[header_end + 4..].to_vec();
@@ -121,7 +121,7 @@ fn parse_headers(header_text: &str) -> Result<(String, &str, BTreeMap<String, St
         ));
     }
     let method = parts[0].to_owned();
-    if method != "GET" && method != "POST" && method != "PUT" {
+    if method != "GET" && method != "POST" && method != "PUT" && method != "PATCH" {
         return Err(HttpError::new(
             "method_not_allowed",
             "HTTP method is not supported",

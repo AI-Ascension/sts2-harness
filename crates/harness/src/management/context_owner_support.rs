@@ -205,6 +205,41 @@ pub trait ContextOwnerPort: Send + Sync {
         ))
     }
 
+    fn publish_draft(
+        &self,
+        _actor: &AuthContext,
+        _snapshot: &RunSnapshot,
+        _request: &ContextOwnerDraftPublicationRequest,
+    ) -> Result<ContextOwnerDraftPublicationReceipt, ManagementError> {
+        Err(ManagementError::unavailable(
+            "context_owner_publication_unavailable",
+            "immutable draft publication is not attached to this owner",
+        ))
+    }
+
+    fn published_sources(
+        &self,
+        _actor: &AuthContext,
+        _snapshot: &RunSnapshot,
+    ) -> Result<ContextOwnerPublishedSourcesView, ManagementError> {
+        Err(ManagementError::unavailable(
+            "context_owner_publication_unavailable",
+            "published context sources are not attached to this owner",
+        ))
+    }
+
+    fn recover_publication_receipt(
+        &self,
+        _actor: &AuthContext,
+        _snapshot: &RunSnapshot,
+        _request: &ContextOwnerDraftPublicationLookupRequest,
+    ) -> Result<Option<ContextOwnerDraftPublicationReceipt>, ManagementError> {
+        Err(ManagementError::unavailable(
+            "context_owner_publication_recovery_unavailable",
+            "exact publication receipt recovery is not attached to this owner",
+        ))
+    }
+
     fn recover_mutation_receipt(
         &self,
         _actor: &AuthContext,
