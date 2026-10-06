@@ -9,13 +9,6 @@ mod fixture;
 use super::*;
 use crate::provider_session::owner_journal::{CommitStage, inject_commit_failure};
 use fixture::{Effect, Fixture};
-#[cfg(unix)]
-use std::fs::OpenOptions;
-#[cfg(unix)]
-use std::io::Write;
-#[cfg(unix)]
-use std::path::{Path, PathBuf};
-
 #[path = "tests_history.rs"]
 mod history;
 
@@ -26,108 +19,16 @@ mod derived_ids;
 mod identity_width;
 
 #[cfg(unix)]
+#[path = "process_effect_fixture.rs"]
+mod process_effect_fixture;
+
+#[cfg(unix)]
+#[path = "process_recovery_support.rs"]
+mod process_recovery_support;
+
+#[cfg(unix)]
 #[path = "process_recovery_tests.rs"]
 mod process_recovery_tests;
-
-#[cfg(unix)]
-pub(super) fn expected_process_completion() -> EffectCompletion {
-    fixture::Handle {
-        ready: true,
-        units: Some(3),
-    }
-    .poll()
-    .expect("fixture response poll")
-    .expect("fixture completion")
-}
-
-#[cfg(unix)]
-pub(super) fn assert_one_process_effect_attempt(root: &Path) {
-    let attempts = std::fs::read(root.join("effect-attempts.log")).expect("effect counter");
-    assert_eq!(attempts, b"effect-start\n");
-}
-
-#[cfg(unix)]
-pub(super) fn assert_process_sent_journal_unchanged(root: &Path) {
-    let expected =
-        std::fs::read_to_string(root.join("sent-journal.sha256")).expect("sent journal receipt");
-    let current = crate::sha256_hex(
-        std::fs::read(root.join("owner").join("journal.enc")).expect("journal still sent"),
-    );
-    assert_eq!(current, expected);
-}
-
-#[cfg(unix)]
-pub(super) fn assert_process_response_was_delivered(root: &Path) {
-    let expected = expected_process_completion();
-    let receipt = format!(
-        "{} {}\n",
-        expected.response.len(),
-        crate::sha256_hex(&expected.response)
-    );
-    assert_eq!(
-        std::fs::read(root.join("response-delivered.txt")).expect("delivered response receipt"),
-        receipt.as_bytes()
-    );
-}
-
-#[cfg(unix)]
-pub(super) struct PersistentProcessEffect {
-    root: PathBuf,
-}
-
-#[cfg(unix)]
-impl PersistentProcessEffect {
-    pub(super) fn new(root: &Path) -> Self {
-        Self {
-            root: root.to_path_buf(),
-        }
-    }
-}
-
-#[cfg(unix)]
-pub(super) struct PersistentProcessHandle {
-    inner: fixture::Handle,
-    receipt: PathBuf,
-}
-
-#[cfg(unix)]
-impl EffectPort for PersistentProcessEffect {
-    type Handle = PersistentProcessHandle;
-
-    fn try_start(&mut self, _: SendPermit, _: &[u8]) -> Result<Self::Handle, LifecycleError> {
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(self.root.join("effect-attempts.log"))
-            .map_err(|_| LifecycleError::Io)?;
-        file.write_all(b"effect-start\n")
-            .and_then(|()| file.sync_all())
-            .map_err(|_| LifecycleError::Io)?;
-        Ok(PersistentProcessHandle {
-            inner: fixture::Handle {
-                ready: true,
-                units: Some(3),
-            },
-            receipt: self.root.join("response-delivered.txt"),
-        })
-    }
-}
-
-#[cfg(unix)]
-impl EffectHandle for PersistentProcessHandle {
-    fn poll(&mut self) -> Result<Option<EffectCompletion>, LifecycleError> {
-        let completion = self.inner.poll()?;
-        if let Some(completion) = &completion {
-            let receipt = format!(
-                "{} {}\n",
-                completion.response.len(),
-                crate::sha256_hex(&completion.response)
-            );
-            fixture::write_process_file(&self.receipt, receipt.as_bytes());
-        }
-        Ok(completion)
-    }
-}
 
 #[test]
 fn faults_at_every_intent_admitted_sent_boundary_never_hand_off_or_restore_permit() {

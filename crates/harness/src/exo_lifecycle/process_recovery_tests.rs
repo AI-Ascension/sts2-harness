@@ -2,16 +2,16 @@
 
 use super::fixture::write_process_file as write_once;
 use super::fixture::{self, Fixture};
-use super::{
-    PersistentProcessEffect as PersistentEffect,
-    assert_one_process_effect_attempt as assert_one_effect_attempt,
-    assert_process_response_was_delivered as assert_response_was_delivered,
-    assert_process_sent_journal_unchanged as assert_sent_journal_unchanged,
-    expected_process_completion as expected_completion,
+use super::process_effect_fixture::{
+    PersistentProcessEffect as PersistentEffect, assert_one_effect_attempt,
+    assert_response_delivered, assert_response_not_delivered, assert_sent_journal_unchanged,
 };
-use crate::exo_lifecycle::{LifecyclePhase, StartOutcome};
+use super::process_recovery_support::{
+    assert_postcommit_recovery, assert_precommit_recovery, open_existing_fixture,
+};
+use crate::ExecutionStore;
+use crate::exo_lifecycle::StartOutcome;
 use crate::provider_session::owner_journal::inject_terminal_process_barrier;
-use crate::{ExecutionStore, ProviderReservationState};
 use std::fs::{self, OpenOptions};
 use std::io::Read;
 use std::os::unix::fs::DirBuilderExt;
@@ -30,6 +30,7 @@ const OUTPUT_DIAGNOSTIC_LIMIT: usize = 4096;
 enum CrashCut {
     BeforeResultCommit,
     BeforeTerminalJournalCommit,
+    AfterPossibleWriteBeforeHandle,
 }
 
 impl CrashCut {
@@ -37,6 +38,7 @@ impl CrashCut {
         match self {
             Self::BeforeResultCommit => "before-result-commit",
             Self::BeforeTerminalJournalCommit => "before-terminal-journal-commit",
+            Self::AfterPossibleWriteBeforeHandle => "after-possible-write-before-handle",
         }
     }
 
@@ -44,50 +46,14 @@ impl CrashCut {
         match self {
             Self::BeforeResultCommit => b"result transaction updates reached before commit\n",
             Self::BeforeTerminalJournalCommit => b"terminal journal commit reached\n",
+            Self::AfterPossibleWriteBeforeHandle => {
+                b"effect attempt synced before handle delivery\n"
+            }
         }
     }
 
     fn marker_path(self, root: &Path) -> PathBuf {
         root.join(format!("{}.arrived", self.env_value()))
-    }
-}
-
-fn open_existing_fixture(root: PathBuf) -> Fixture {
-    let manifest: super::InvocationManifest =
-        serde_json::from_slice(&fs::read(root.join("manifest.json")).expect("fixture manifest"))
-            .expect("decode fixture manifest");
-    let input = fs::read(root.join("input.bin")).expect("fixture input");
-    assert_eq!(manifest.input_length, input.len());
-    assert_eq!(manifest.input_digest, crate::sha256_hex(&input));
-    let initial_broker = fixture::broker();
-    let policy = initial_broker.policy().clone();
-    let capabilities = initial_broker.capabilities().clone();
-    let config = super::JournalConfig {
-        directory: root.join("owner"),
-        legacy_path: None,
-        store_id: "journal-fixture".into(),
-        scope: manifest.scope.clone(),
-        owner_binding_digest: crate::sha256_hex("authenticated-owner-fixture"),
-    };
-    let store = ExecutionStore::open(crate::ExecutionStoreConfig::new(
-        root.join("execution.sqlite3"),
-    ))
-    .expect("existing store");
-    let fingerprint =
-        crate::ExecutionFingerprint::new("seed", "build", "state", "config", "provider")
-            .expect("fingerprint");
-    Fixture {
-        root,
-        config,
-        manifest,
-        input,
-        broker: None,
-        policy,
-        capabilities,
-        authority: std::sync::Arc::new(fixture::Authority::default()),
-        store,
-        fingerprint,
-        cleanup_on_drop: false,
     }
 }
 
@@ -102,6 +68,11 @@ fn process_death_after_result_commit_recovers_without_another_effect() {
 }
 
 #[test]
+fn process_death_after_possible_write_before_handle_stays_held() {
+    run_process_cut(CrashCut::AfterPossibleWriteBeforeHandle);
+}
+
+#[test]
 fn child_process_stops_at_requested_crash_cut() {
     let Some(cut_name) = std::env::var_os(CUT_ENV) else {
         return;
@@ -109,6 +80,7 @@ fn child_process_stops_at_requested_crash_cut() {
     let cut = match cut_name.to_str() {
         Some("before-result-commit") => CrashCut::BeforeResultCommit,
         Some("before-terminal-journal-commit") => CrashCut::BeforeTerminalJournalCommit,
+        Some("after-possible-write-before-handle") => CrashCut::AfterPossibleWriteBeforeHandle,
         _ => panic!("unknown process crash cut"),
     };
     let root = PathBuf::from(std::env::var_os(ROOT_ENV).expect("private fixture root"));
@@ -119,7 +91,12 @@ fn child_process_stops_at_requested_crash_cut() {
     );
     write_once(&root.join("input.bin"), &fixture.input);
     let mut owner = fixture.owner();
-    let mut effect = PersistentEffect::new(&root);
+    let effect = PersistentEffect::new(&root);
+    let mut effect = if matches!(cut, CrashCut::AfterPossibleWriteBeforeHandle) {
+        effect.stop_before_handle_at(cut.marker_path(&root))
+    } else {
+        effect
+    };
     let outcome = owner
         .start(
             fixture.manifest.clone(),
@@ -132,12 +109,14 @@ fn child_process_stops_at_requested_crash_cut() {
     let StartOutcome::Started(mut handle) = outcome else {
         panic!("fresh child must own the started handle");
     };
-    let sent_journal =
-        fs::read(fixture.config.directory.join("journal.enc")).expect("sent journal bytes");
-    write_once(
-        &root.join("sent-journal.sha256"),
-        crate::sha256_hex(sent_journal).as_bytes(),
-    );
+    if !matches!(cut, CrashCut::AfterPossibleWriteBeforeHandle) {
+        let sent_journal =
+            fs::read(fixture.config.directory.join("journal.enc")).expect("sent journal bytes");
+        write_once(
+            &root.join("sent-journal.sha256"),
+            crate::sha256_hex(sent_journal).as_bytes(),
+        );
+    }
 
     match cut {
         CrashCut::BeforeResultCommit => {
@@ -145,6 +124,9 @@ fn child_process_stops_at_requested_crash_cut() {
         }
         CrashCut::BeforeTerminalJournalCommit => {
             inject_terminal_process_barrier(cut.marker_path(&root));
+        }
+        CrashCut::AfterPossibleWriteBeforeHandle => {
+            panic!("pre-response effect barrier returned without parent kill")
         }
     }
     let unexpected = owner.poll(&mut handle, &mut fixture.store);
@@ -157,7 +139,11 @@ fn run_process_cut(cut: CrashCut) {
     child.wait_for_marker(cut.marker_path(&private_root.state), cut.marker_text());
     assert_sent_journal_unchanged(&private_root.state);
     assert_one_effect_attempt(&private_root.state);
-    assert_response_was_delivered(&private_root.state);
+    if matches!(cut, CrashCut::AfterPossibleWriteBeforeHandle) {
+        assert_response_not_delivered(&private_root.state);
+    } else {
+        assert_response_delivered(&private_root.state);
+    }
     let status = child.kill_and_reap();
     use std::os::unix::process::ExitStatusExt;
     assert_eq!(
@@ -166,11 +152,16 @@ fn run_process_cut(cut: CrashCut) {
         "the exact child was not SIGKILLed"
     );
     child.assert_captured_output();
+    if matches!(cut, CrashCut::AfterPossibleWriteBeforeHandle) {
+        assert_response_not_delivered(&private_root.state);
+    }
 
     let mut fixture = open_existing_fixture(private_root.state.clone());
     let mut owner = fixture.reopen().expect("new owner after child death");
     match cut {
-        CrashCut::BeforeResultCommit => assert_precommit_recovery(&mut fixture, &mut owner),
+        CrashCut::BeforeResultCommit | CrashCut::AfterPossibleWriteBeforeHandle => {
+            assert_precommit_recovery(&mut fixture, &mut owner)
+        }
         CrashCut::BeforeTerminalJournalCommit => {
             assert_postcommit_recovery(&mut fixture, &mut owner)
         }
@@ -179,95 +170,6 @@ fn run_process_cut(cut: CrashCut) {
     drop(owner);
     drop(fixture);
     private_root.cleanup();
-}
-
-fn assert_precommit_recovery(
-    fixture: &mut Fixture,
-    owner: &mut crate::exo_lifecycle::LifecycleOwner,
-) {
-    let decision = fixture
-        .store
-        .decision(&fixture.manifest.execution_id)
-        .expect("decision row survives rollback");
-    assert!(!decision.completed);
-    assert!(!decision.unknown);
-    assert!(decision.result_payload.is_none());
-    let reservation = fixture
-        .store
-        .provider_reservation(&fixture.manifest.reservation_id)
-        .expect("reservation row survives rollback");
-    assert_eq!(reservation.state, ProviderReservationState::Reserved);
-    assert_eq!(owner.entries().len(), 1);
-    assert_eq!(owner.entries()[0].phase, LifecyclePhase::Unknown);
-    assert!(owner.entries()[0].possible_write);
-    assert!(
-        owner
-            .reconcile_stored(&fixture.manifest, &fixture.input, &fixture.store)
-            .is_err()
-    );
-    let mut no_second_effect = PersistentEffect::new(&fixture.root);
-    assert!(
-        owner
-            .start(
-                fixture.manifest.clone(),
-                &fixture.input,
-                &mut fixture.store,
-                &fixture.fingerprint,
-                &mut no_second_effect,
-            )
-            .is_err()
-    );
-}
-
-fn assert_postcommit_recovery(
-    fixture: &mut Fixture,
-    owner: &mut crate::exo_lifecycle::LifecycleOwner,
-) {
-    let expected = expected_completion();
-    let expected_digest = crate::sha256_hex(&expected.response);
-    let stored = fixture
-        .store
-        .decision(&fixture.manifest.execution_id)
-        .expect("durable decision");
-    assert!(stored.completed);
-    assert!(!stored.unknown);
-    assert_eq!(
-        stored.result_payload.as_deref(),
-        Some(expected.response.as_slice())
-    );
-    assert_eq!(
-        stored.reference.result_digest.as_deref(),
-        Some(expected_digest.as_str())
-    );
-
-    let expected_decision =
-        super::super::validation::response(&fixture.manifest, &fixture.input, &expected.response)
-            .expect("expected exact decision");
-    let recovered = owner
-        .reconcile_stored(&fixture.manifest, &fixture.input, &fixture.store)
-        .expect("recover exact result in new owner");
-    assert_eq!(recovered, expected_decision);
-    assert_eq!(owner.entries()[0].phase, LifecyclePhase::Completed);
-    assert_eq!(
-        owner.entries()[0].result_digest.as_deref(),
-        Some(expected_digest.as_str())
-    );
-    let repeated = owner
-        .reconcile_stored(&fixture.manifest, &fixture.input, &fixture.store)
-        .expect("idempotent exact result recovery");
-    assert_eq!(repeated, expected_decision);
-    let mut no_second_effect = PersistentEffect::new(&fixture.root);
-    assert!(
-        owner
-            .start(
-                fixture.manifest.clone(),
-                &fixture.input,
-                &mut fixture.store,
-                &fixture.fingerprint,
-                &mut no_second_effect,
-            )
-            .is_err()
-    );
 }
 
 struct OwnedChild {
