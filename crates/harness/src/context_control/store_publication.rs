@@ -2,15 +2,15 @@
 
 //! Encrypted, run-scoped immutable draft publications and activation links.
 
-use super::ContextControlStore;
-use super::store_render_sources::source_aad;
-use super::store_schema::digest;
-use super::store_types::{
+use super::super::store_render_sources::source_aad;
+use super::super::store_schema::digest;
+use super::super::store_types::{
     DurableActiveContextPublicationLink, DurableActiveContextSource,
     DurableContextOwnerPublication, DurableContextOwnerPublicationWrite,
     DurableContextSourceSnapshot, DurableControlStoreError, DurableStoreFailpoint,
     MAX_CONTEXT_SOURCE_BYTES, MAX_OWNER_PUBLICATIONS, MAX_OWNER_RECEIPT_BYTES,
 };
+use super::ContextControlStore;
 use crate::checkpoint_projection::hmac_sha256;
 use crate::management::{
     ContextOwnerDraftPublicationLookupRequest, ContextOwnerDraftPublicationReceipt,
@@ -174,7 +174,8 @@ impl ContextControlStore {
             expected_owner_state_bytes,
         )?;
         if expected_owner_state_bytes.is_empty()
-            || expected_owner_state_bytes.len() > super::store_types::MAX_OWNER_CONTEXT_STATE_BYTES
+            || expected_owner_state_bytes.len()
+                > super::super::store_types::MAX_OWNER_CONTEXT_STATE_BYTES
         {
             return Err(DurableControlStoreError::TooLarge);
         }
@@ -214,7 +215,7 @@ impl ContextControlStore {
         let source_version = i64::try_from(receipt.source_version)
             .map_err(|_| DurableControlStoreError::TooLarge)?;
         if stored_version != expected
-            || state_envelope.len() > super::store_types::MAX_OWNER_CONTEXT_STATE_BYTES + 40
+            || state_envelope.len() > super::super::store_types::MAX_OWNER_CONTEXT_STATE_BYTES + 40
             || digest(&state_envelope) != state_digest
         {
             return Err(DurableControlStoreError::OwnerContextConflict);

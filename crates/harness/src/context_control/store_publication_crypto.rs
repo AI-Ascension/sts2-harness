@@ -284,10 +284,10 @@ fn authenticate_transaction_key(
         .optional()
         .map_err(|_| DurableControlStoreError::Sqlite)?
         .ok_or(DurableControlStoreError::Missing)?;
-    if row.0.len() > super::store_types::MAX_JOURNAL_BYTES + 40 || digest(&row.0) != row.1 {
+    if row.0.len() > super::super::store_types::MAX_JOURNAL_BYTES + 40 || digest(&row.0) != row.1 {
         return Err(DurableControlStoreError::Corrupt);
     }
-    super::decrypt_with_key(key, &row.0, super::store_types::AAD).map(|_| ())
+    super::decrypt_with_key(key, &row.0, super::super::store_types::AAD).map(|_| ())
 }
 
 fn owner_state_aad(run_id: &str, owner_id: &str) -> Result<Vec<u8>, DurableControlStoreError> {
