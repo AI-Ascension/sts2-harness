@@ -30,7 +30,7 @@ fn fixture_nonce() -> String {
     )
 }
 
-fn broker() -> ProviderSessionBroker {
+pub(super) fn broker() -> ProviderSessionBroker {
     let scope = SessionScope::new(
         "project-fixture",
         "run-fixture",
@@ -153,11 +153,35 @@ pub struct Fixture {
     pub authority: Arc<Authority>,
     pub store: ExecutionStore,
     pub fingerprint: ExecutionFingerprint,
+    pub cleanup_on_drop: bool,
+}
+
+pub(super) fn write_process_file(path: &std::path::Path, bytes: &[u8]) {
+    use std::io::Write;
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+        .expect("exclusive fixture file");
+    file.write_all(bytes).expect("write fixture file");
+    file.sync_all().expect("sync fixture file");
+    std::fs::File::open(path.parent().expect("fixture parent"))
+        .and_then(|directory| directory.sync_all())
+        .expect("sync fixture directory");
 }
 
 impl Fixture {
     pub fn new() -> Self {
         let root = std::env::temp_dir().join(format!("sts2-lifecycle-{}", fixture_nonce()));
+        Self::build(root, true)
+    }
+
+    /// Creates a fixture at a caller-owned private root, which survives this handle being dropped.
+    pub fn new_at(root: std::path::PathBuf) -> Self {
+        Self::build(root, false)
+    }
+
+    fn build(root: std::path::PathBuf, cleanup_on_drop: bool) -> Self {
         std::fs::create_dir(&root).expect("private fixture root");
         #[cfg(unix)]
         {
@@ -239,8 +263,10 @@ impl Fixture {
             authority: Arc::new(Authority::default()),
             store,
             fingerprint,
+            cleanup_on_drop,
         }
     }
+
     pub fn owner(&mut self) -> LifecycleOwner {
         LifecycleOwner::create(
             self.config.clone(),
@@ -265,7 +291,9 @@ impl Fixture {
 impl Drop for Fixture {
     fn drop(&mut self) {
         let _ = self.store.close();
-        let _ = std::fs::remove_dir_all(&self.root);
+        if self.cleanup_on_drop {
+            let _ = std::fs::remove_dir_all(&self.root);
+        }
     }
 }
 

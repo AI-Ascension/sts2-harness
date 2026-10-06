@@ -9,7 +9,6 @@ mod fixture;
 use super::*;
 use crate::provider_session::owner_journal::{CommitStage, inject_commit_failure};
 use fixture::{Effect, Fixture};
-
 #[path = "tests_history.rs"]
 mod history;
 
@@ -18,6 +17,21 @@ mod derived_ids;
 
 #[path = "tests_identity_width.rs"]
 mod identity_width;
+
+#[cfg(unix)]
+#[path = "process_effect_fixture.rs"]
+mod process_effect_fixture;
+
+#[cfg(unix)]
+#[path = "process_recovery_support.rs"]
+mod process_recovery_support;
+
+#[cfg(unix)]
+#[path = "process_recovery_tests.rs"]
+mod process_recovery_tests;
+
+#[path = "process_recovery_result_tests.rs"]
+mod process_recovery_result_tests;
 
 #[test]
 fn faults_at_every_intent_admitted_sent_boundary_never_hand_off_or_restore_permit() {
@@ -81,44 +95,6 @@ fn faults_at_every_intent_admitted_sent_boundary_never_hand_off_or_restore_permi
             assert!(repeated.claim_epoch() >= 3);
         }
     }
-}
-
-#[test]
-fn terminal_journal_failure_reuses_existing_result_without_another_effect() {
-    let mut fixture = Fixture::new();
-    let mut owner = fixture.owner();
-    let mut effect = Effect::default();
-    let result = owner
-        .start(
-            fixture.manifest.clone(),
-            &fixture.input,
-            &mut fixture.store,
-            &fixture.fingerprint,
-            &mut effect,
-        )
-        .expect("start");
-    let StartOutcome::Started(mut handle) = result else {
-        panic!("fresh handle required");
-    };
-    inject_commit_failure(Some(CommitStage::BeforeWrite), 0);
-    let result = owner.poll(&mut handle, &mut fixture.store);
-    inject_commit_failure(None, 0);
-    assert!(matches!(result, Err(LifecycleError::Io)));
-    assert!(
-        fixture
-            .store
-            .decision(&fixture.manifest.execution_id)
-            .expect("stored")
-            .completed
-    );
-    drop(owner);
-    let mut reopened = fixture.reopen().expect("restart");
-    assert!(
-        reopened
-            .reconcile_stored(&fixture.manifest, &fixture.input, &fixture.store)
-            .is_ok()
-    );
-    assert_eq!(effect.calls, 1);
 }
 
 #[test]

@@ -199,6 +199,53 @@ thread_local! { pub(crate) static FAILURE_SKIP: std::cell::Cell<usize> = const {
     std::cell::Cell::new(0)
 }; }
 
+#[cfg(all(test, unix))]
+thread_local! { static TERMINAL_PROCESS_BARRIER: std::cell::RefCell<Option<std::path::PathBuf>> = const {
+    std::cell::RefCell::new(None)
+}; }
+
+#[cfg(all(test, unix))]
+pub(super) fn inject_terminal_process_barrier(marker: std::path::PathBuf) {
+    TERMINAL_PROCESS_BARRIER.with(|barrier| *barrier.borrow_mut() = Some(marker));
+}
+
+#[cfg(all(test, unix))]
+pub(super) fn terminal_process_barrier() -> Result<(), LifecycleError> {
+    let marker = TERMINAL_PROCESS_BARRIER.with(|barrier| barrier.borrow_mut().take());
+    if let Some(marker) = marker {
+        signal_parent(&marker)?;
+        wait_for_parent_kill()?;
+    }
+    Ok(())
+}
+
+#[cfg(all(test, unix))]
+fn signal_parent(marker: &std::path::Path) -> Result<(), LifecycleError> {
+    use std::io::Write;
+    let pending = marker.with_extension("pending");
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&pending)
+        .map_err(|_| LifecycleError::Io)?;
+    file.write_all(b"terminal journal commit reached\n")
+        .map_err(|_| LifecycleError::Io)?;
+    file.sync_all().map_err(|_| LifecycleError::Io)?;
+    std::fs::rename(&pending, marker).map_err(|_| LifecycleError::Io)?;
+    std::fs::File::open(marker.parent().ok_or(LifecycleError::Invalid)?)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|_| LifecycleError::Io)
+}
+
+#[cfg(all(test, unix))]
+fn wait_for_parent_kill() -> Result<(), LifecycleError> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    while std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    Err(LifecycleError::Io)
+}
+
 #[cfg(unix)]
 fn checkpoint(_stage: CommitStage) -> Result<(), LifecycleError> {
     #[cfg(test)]
