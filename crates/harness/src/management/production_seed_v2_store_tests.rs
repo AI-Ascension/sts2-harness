@@ -107,9 +107,11 @@ fn valid_candidate_with_a_different_owner_configuration_writes_no_run_or_event_r
     }
     assert_eq!(
         connection
-            .query_row("SELECT count(*) FROM management_seed_operations", [], |row| {
-                row.get::<_, i64>(0)
-            })
+            .query_row(
+                "SELECT count(*) FROM management_seed_operations",
+                [],
+                |row| { row.get::<_, i64>(0) }
+            )
             .unwrap(),
         1,
         "the pre-candidate key pin survives a rejected finalization"
@@ -194,10 +196,9 @@ fn operation_lookup_keeps_one_sqlite_snapshot_across_candidate_commit() {
         .expect("stop first management server");
     drop(first_store);
 
-    let actor_digest = crate::management::seed_v2_crypto::actor_digest(
-        super::seed_v2_support::SUBJECT,
-    )
-    .expect("actor digest");
+    let actor_digest =
+        crate::management::seed_v2_crypto::actor_digest(super::seed_v2_support::SUBJECT)
+            .expect("actor digest");
     let request_digest = crate::management::seed_v2_crypto::request_digest(
         &request,
         super::seed_v2_support::SUBJECT,
@@ -261,13 +262,18 @@ fn operation_lookup_keeps_one_sqlite_snapshot_across_candidate_commit() {
             .connection
             .lock()
             .expect("SQLite lock")
-            .query_row("SELECT count(*) FROM management_seed_operations", [], |row| {
-                row.get::<_, i64>(0)
-            })
+            .query_row(
+                "SELECT count(*) FROM management_seed_operations",
+                [],
+                |row| { row.get::<_, i64>(0) }
+            )
             .expect("operation count"),
         1
     );
-    assert_eq!(runtime_counts(&writer_server.runtime_counters), (0, 0, 0, 0));
+    assert_eq!(
+        runtime_counts(&writer_server.runtime_counters),
+        (0, 0, 0, 0)
+    );
     assert_eq!(
         writer_server
             .catalog_calls
@@ -302,10 +308,9 @@ fn candidate_operation_lookup_requires_matching_submission_and_run_rows() {
         .shutdown()
         .expect("stop management server before direct row checks");
 
-    let actor_digest = crate::management::seed_v2_crypto::actor_digest(
-        super::seed_v2_support::SUBJECT,
-    )
-    .expect("actor digest");
+    let actor_digest =
+        crate::management::seed_v2_crypto::actor_digest(super::seed_v2_support::SUBJECT)
+            .expect("actor digest");
     let request_digest = crate::management::seed_v2_crypto::request_digest(
         &request,
         super::seed_v2_support::SUBJECT,

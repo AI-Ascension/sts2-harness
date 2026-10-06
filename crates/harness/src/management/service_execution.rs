@@ -7,8 +7,8 @@ use super::super::contract::{
     CommandRequest, PendingOperation, RecoveryAdmission, RunEvent, RunRequest, RunSnapshot,
     TargetAdmissionBinding,
 };
-use super::super::store::{SeedBindingRecord, SeedOperationRecord};
 use super::super::store::WorkflowStore;
+use super::super::store::{SeedBindingRecord, SeedOperationRecord};
 use super::ManagementError;
 
 /// A service-owned capability for crossing the live submission effect
@@ -100,8 +100,7 @@ impl RunReservation {
                         "workflow store cannot atomically persist versioned seed bindings",
                     ));
                 }
-                if seed_binding.mode
-                    == super::super::contract_seed_v2::SeedModeV2::DeriveOnce
+                if seed_binding.mode == super::super::contract_seed_v2::SeedModeV2::DeriveOnce
                     && (!self.store.supports_seed_operation_reservations()
                         || self.seed_operation.is_none())
                 {
@@ -110,8 +109,7 @@ impl RunReservation {
                         "workflow store cannot atomically preserve derive-once key selection",
                     ));
                 }
-                if seed_binding.mode
-                    == super::super::contract_seed_v2::SeedModeV2::Explicit
+                if seed_binding.mode == super::super::contract_seed_v2::SeedModeV2::Explicit
                     && self.seed_operation.is_some()
                 {
                     return Err(ManagementError::conflict(
