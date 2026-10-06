@@ -8,11 +8,14 @@ use super::seed_v2_support::{
     CountingAuthority, PrivateDirectory, client, derive_once_request, open_store, request_bytes,
     runtime_counts, start_live_server,
 };
+#[path = "production_seed_v2_store_support_tests.rs"]
+mod support;
 use super::{Counters, duplicate_run_tests};
 use crate::management::{
     AuthContext, FileWorkflowStore, MemoryWorkflowStore, RunReservation, SeedOperationLookup,
     SeedOperationRecord, WorkflowExecutionPort, WorkflowStore, live_run_id,
 };
+use support::{assert_store_corrupt, table_count};
 
 #[cfg(target_os = "linux")]
 #[test]
@@ -385,37 +388,4 @@ fn candidate_operation_lookup_requires_matching_submission_and_run_rows() {
     assert_eq!(table_count(&store, "management_seed_bindings"), 1);
     drop(store);
     directory.cleanup();
-}
-
-fn assert_store_corrupt(
-    store: &crate::management::SqliteWorkflowStore,
-    request_id: &str,
-    actor_digest: &str,
-    request_digest: &str,
-) {
-    assert!(
-        matches!(
-            store.lookup_seed_operation(request_id, actor_digest, request_digest),
-            Err(error) if error.code == "store_corrupt"
-        ),
-        "inconsistent persisted candidate must fail closed"
-    );
-}
-
-fn table_count(store: &crate::management::SqliteWorkflowStore, table: &str) -> i64 {
-    assert!(matches!(
-        table,
-        "management_seed_operations"
-            | "management_submissions"
-            | "management_runs"
-            | "management_seed_bindings"
-    ));
-    store
-        .connection
-        .lock()
-        .expect("SQLite lock")
-        .query_row(&format!("SELECT count(*) FROM {table}"), [], |row| {
-            row.get::<_, i64>(0)
-        })
-        .expect("table count")
 }
