@@ -10,8 +10,12 @@ use crate::config::{
     synthetic_route_admitted, unsupported_profile_axis,
 };
 use serde_json::{Value, json};
-use std::os::unix::fs::{DirBuilderExt, PermissionsExt, symlink};
+use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt, symlink};
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use sts2_harness::ExoPrivateStatePolicy;
+use sts2_harness::exo_bridge_configuration::{Configuration, Loaded, PrivateStateProfile};
+use sts2_harness::exo_private_state::{BridgeChildScope, GuardedRun};
 use sts2_harness::{EXO_SOURCE_REVISION, ExoBridgeRequestEnvelope, parse_bridge_request_envelope};
 
 type Result<T = ()> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -286,4 +290,120 @@ fn cleanup_is_confined_to_the_owned_private_child() -> Result {
     assert!(!private.0.exists());
     assert_eq!(std::fs::read(sibling)?, b"preserved");
     Ok(())
+}
+
+#[test]
+fn retained_over_quota_state_refuses_before_executor_or_provider_spawn() -> Result {
+    const MODE: &str = "STS2_EXO_OVER_QUOTA_FIXTURE";
+    const FIXTURE_QUOTA_BYTES: u64 = 64 * 1024;
+    let root = std::env::temp_dir().canonicalize()?.join(format!(
+        "exo-over-quota-{}-{}",
+        std::process::id(),
+        uuid::Uuid::new_v4()
+    ));
+    std::fs::DirBuilder::new().mode(0o700).create(&root)?;
+    let policy = quota_policy(&root, FIXTURE_QUOTA_BYTES);
+    for path in [
+        PathBuf::from(&policy.state_root),
+        PathBuf::from(&policy.cache_root),
+        PathBuf::from(&policy.temp_root),
+    ] {
+        std::fs::DirBuilder::new().mode(0o700).create(path)?;
+    }
+    let marker = root.join("ready");
+    let helper = Command::new(std::env::current_exe()?)
+        .arg("isolated_over_quota_fixture_child")
+        .arg("--nocapture")
+        .env(MODE, "create-retained-over-quota")
+        .env("STS2_EXO_OVER_QUOTA_ROOT", &root)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()?;
+    let mut helper = helper;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+    while !marker.exists() && std::time::Instant::now() < deadline {
+        if let Some(status) = helper.try_wait()? {
+            return Err(format!("retained-state fixture helper exited early: {status}").into());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    let ready = marker.exists();
+    let helper_status = helper.wait()?;
+    if !ready || !helper_status.success() {
+        return Err("retained-state fixture did not complete".into());
+    }
+
+    let executor = root.join("executor-probe");
+    let spawned = root.join("executor-was-spawned");
+    std::fs::write(
+        &executor,
+        format!(
+            "#!/bin/sh\nprintf spawned > '{}'\nexit 1\n",
+            spawned.display()
+        ),
+    )?;
+    std::fs::set_permissions(&executor, std::fs::Permissions::from_mode(0o700))?;
+    let loaded = Loaded {
+        config: Configuration {
+            schema: "sts2.exo-one-shot-config-v2".to_owned(),
+            executor,
+            executor_sha256: String::new(),
+            source_root: root.join("source"),
+            extension: root.join("extension.js"),
+            extension_sha256: String::new(),
+            node: PathBuf::from("/bin/node"),
+            node_sha256: String::new(),
+            model: "gpt-5".to_owned(),
+            endpoint: "http://127.0.0.1:1".to_owned(),
+        },
+        digest: sts2_harness::sha256_hex(b"overquota config"),
+        private_state: PrivateStateProfile::GuardedV2(policy.clone()),
+    };
+    let result = super::execute_guarded(&loaded, request_envelope(), true, false);
+    assert_eq!(result, Err("exo_private_quota"));
+    assert!(
+        !spawned.exists(),
+        "over-quota admission never starts an executor"
+    );
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
+fn isolated_over_quota_fixture_child() -> Result {
+    if std::env::var("STS2_EXO_OVER_QUOTA_FIXTURE").as_deref() != Ok("create-retained-over-quota") {
+        return Ok(());
+    }
+    let root = PathBuf::from(std::env::var_os("STS2_EXO_OVER_QUOTA_ROOT").ok_or("root missing")?);
+    const FIXTURE_QUOTA_BYTES: u64 = 64 * 1024;
+    let policy = quota_policy(&root, FIXTURE_QUOTA_BYTES);
+    let mut run = GuardedRun::create(&policy, &sts2_harness::sha256_hex(b"overquota config"))
+        .map_err(std::io::Error::other)?;
+    let scope = BridgeChildScope::enable().map_err(std::io::Error::other)?;
+    run.begin_spawn().map_err(std::io::Error::other)?;
+    if !run.finish_child(&scope).map_err(std::io::Error::other)? {
+        return Err("empty spawn boundary was not quiescent".into());
+    }
+    let oversized = run.paths().state_root.join("retained-over-quota");
+    let file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(oversized)?;
+    file.set_len(FIXTURE_QUOTA_BYTES + 1)?;
+    drop(run);
+    std::fs::write(root.join("ready"), b"ready")?;
+    Ok(())
+}
+
+fn quota_policy(root: &Path, quota_bytes: u64) -> ExoPrivateStatePolicy {
+    ExoPrivateStatePolicy {
+        state_root: root.join("state").display().to_string(),
+        cache_root: root.join("cache").display().to_string(),
+        temp_root: root.join("temp").display().to_string(),
+        quota_bytes,
+        max_retention_days: 7,
+        permissions_octal: 0o700,
+    }
 }

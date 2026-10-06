@@ -37,6 +37,7 @@ impl Fixture {
                 endpoint: "https://api.openai.com/v1".to_owned(),
             },
             digest: sha256_hex(b"synthetic configuration"),
+            private_state: sts2_harness::exo_bridge_configuration::PrivateStateProfile::LegacyV1,
         })
     }
 }

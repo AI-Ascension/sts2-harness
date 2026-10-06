@@ -377,6 +377,7 @@ fn lookup_advertisement_does_not_borrow_the_one_shot_decision_set() {
             endpoint: "http://127.0.0.1:8080".to_owned(),
         },
         digest: "0".repeat(64),
+        private_state: config::PrivateStateProfile::LegacyV1,
     };
     let lookup = loaded
         .lookup_description()
