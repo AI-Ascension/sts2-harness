@@ -40,14 +40,17 @@ pub(super) fn count(store: &crate::management::SqliteWorkflowStore, table: &str)
         .expect("table count")
 }
 
-pub(super) fn assert_store_failure(response: &crate::management::ClientResponse) {
+pub(super) fn assert_store_failure(
+    response: &crate::management::ClientResponse,
+    expected_code: &str,
+) {
     assert_eq!(
         response.status, 503,
         "injected SQLite write must fail as unavailable"
     );
     let body: serde_json::Value = serde_json::from_slice(&response.body).expect("error body");
     assert_eq!(body["error"]["class"], "unavailable");
-    assert_eq!(body["error"]["code"], "store_sqlite");
+    assert_eq!(body["error"]["code"], expected_code);
 }
 
 #[cfg(target_os = "linux")]
@@ -72,7 +75,7 @@ fn reservation_commit_failure_selects_no_seed_and_rotated_retry_pins_new_key() {
     let response = client(&first_server)
         .request_json("POST", "/v2/workflow-runs", Some(&request_bytes(&request)))
         .expect("served failed reservation response");
-    assert_store_failure(&response);
+    assert_store_failure(&response, "store_sqlite");
     assert_eq!(first_keys.current_reads(), 1);
     assert_eq!(runtime_counts(&first_server.runtime_counters), (0, 0, 0, 0));
     for table in [
@@ -153,7 +156,7 @@ fn candidate_transaction_failure_keeps_key_pin_and_retry_uses_historical_key() -
     let response = client(&first_server)
         .request_json("POST", "/v2/workflow-runs", Some(&request_bytes(&request)))
         .expect("served failed candidate response");
-    assert_store_failure(&response);
+    assert_store_failure(&response, "store_sqlite");
     assert_eq!(first_keys.current_reads(), 1);
     assert!(first_keys.pinned_reads() > 0);
     assert_eq!(runtime_counts(&first_server.runtime_counters), (0, 0, 0, 0));
@@ -274,7 +277,7 @@ fn missing_or_changed_pinned_key_fails_closed_without_current_key_fallback() {
     let response = client(&server)
         .request_json("POST", "/v2/workflow-runs", Some(&request_bytes(&request)))
         .expect("first candidate attempt");
-    assert_store_failure(&response);
+    assert_store_failure(&response, "store_sqlite");
     server.server.shutdown().expect("stop initial server");
     arm_trigger(&store, "DROP TRIGGER fail_seed_binding;");
     drop(store);

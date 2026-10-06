@@ -335,7 +335,7 @@ fn tampered_operation_index_is_rejected_before_candidate_rows_commit() {
     let response = client(&server)
         .request_json("POST", "/v2/workflow-runs", Some(&request_bytes(&request)))
         .expect("served reservation with concurrent index tamper");
-    assert_store_failure(&response);
+    assert_store_failure(&response, "store_corrupt");
     assert!(keys.tampered.load(std::sync::atomic::Ordering::SeqCst));
     assert_eq!(count(&store, "management_seed_operations"), 1);
     for table in [
