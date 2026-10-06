@@ -69,13 +69,19 @@ impl SeedDerivationKeyAuthority for CountingAuthority {
 
 pub(super) struct CatalogCapabilities {
     pub(super) revision: String,
+    profile: String,
     pub(super) calls: Arc<AtomicUsize>,
 }
 
 impl CapabilityPort for CatalogCapabilities {
     fn capabilities(&self) -> Result<serde_json::Value, ManagementError> {
+        let mut capabilities = SEED_V2_TARGET_CAPABILITIES
+            .iter()
+            .map(|capability| (*capability).to_owned())
+            .collect::<Vec<_>>();
+        capabilities.push(self.profile.clone());
         Ok(serde_json::json!({
-            "capabilities": SEED_V2_TARGET_CAPABILITIES
+            "capabilities": capabilities
         }))
     }
 
@@ -127,6 +133,7 @@ where
 {
     let (mut request, definition_digest) = duplicate_run_tests::admitted_request();
     bind_seed_v2_target_descriptor(&mut request);
+    let profile = request.profile.clone();
     let run_id = live_run_id(&request, &definition_digest).expect("live run ID");
     let runtime_counters = Arc::new(Mutex::new(Counters::default()));
     let execution = duplicate_run_tests::live_port(&runtime_counters, &run_id);
@@ -140,6 +147,7 @@ where
         .with_execution_port(execution)
         .with_capability_port(Arc::new(CatalogCapabilities {
             revision: catalog_revision.to_owned(),
+            profile,
             calls: Arc::clone(&catalog_calls),
         }))
         .with_seed_derivation_key_authority(keys);
