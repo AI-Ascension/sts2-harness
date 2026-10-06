@@ -14,6 +14,47 @@ struct ServedPublicationFixture {
     receipt_value: serde_json::Value,
 }
 
+fn fixture_control_journal(fixture: &OwnerFixture, run: &str) -> Vec<u8> {
+    let current = fixture.owner.current.lock().expect("owner lock");
+    current
+        .get(run)
+        .expect("current owner entry")
+        .authority
+        .export_journal()
+        .expect("export control journal")
+}
+
+fn commit_for_binding(
+    binding: &sts2_harness::management::ContextOwnerBinding,
+    idempotency_key: &str,
+) -> ContextControlCommand {
+    let digest = "e".repeat(64);
+    ContextControlCommand::Commit {
+        idempotency_key: idempotency_key.to_owned(),
+        expected_control_version: binding.boundary.control_version,
+        expected_revision_id: binding.approved_revision_id.clone(),
+        expected_boundary: binding.boundary.clone(),
+        preview_manifest_digest: digest.clone(),
+        approved_manifest_digest: digest,
+    }
+}
+
+fn post_control_command(
+    publication: &ServedPublicationFixture,
+    token: &str,
+    command: &ContextControlCommand,
+) -> (u16, serde_json::Value) {
+    let body = serde_json::to_vec(command).expect("control command JSON");
+    call(
+        Arc::clone(&publication.service),
+        Arc::clone(&publication.auth),
+        token,
+        "POST",
+        &run_path(&publication.run, "context-control-commands"),
+        Some(&body),
+    )
+}
+
 fn create_served_publication_fixture() -> ServedPublicationFixture {
     let fixture = owner_fixture();
     let run = fixture.snapshot.workflow_run_id.clone();

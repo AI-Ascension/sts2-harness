@@ -61,20 +61,7 @@ fn adoption_replay_is_bound_to_source_identity_and_survives_later_revision_and_r
     let adopted_receipt: sts2_harness::management::ContextControlReceipt =
         serde_json::from_value(adopted_value.clone()).expect("adoption receipt");
 
-    let journal_after_adopt = {
-        let current = publication
-            .fixture
-            .owner
-            .current
-            .lock()
-            .expect("owner lock");
-        current
-            .get(&publication.run)
-            .expect("current owner entry")
-            .authority
-            .export_journal()
-            .expect("export control journal")
-    };
+    let journal_after_adopt = fixture_control_journal(&publication.fixture, &publication.run);
     let (status, source_status_before_conflict) = call(
         Arc::clone(&publication.service),
         Arc::clone(&publication.auth),
@@ -139,20 +126,7 @@ fn adoption_replay_is_bound_to_source_identity_and_survives_later_revision_and_r
         publication_view_after_conflict,
         publication_view_before_conflict
     );
-    let journal_after_conflict = {
-        let current = publication
-            .fixture
-            .owner
-            .current
-            .lock()
-            .expect("owner lock");
-        current
-            .get(&publication.run)
-            .expect("current owner entry")
-            .authority
-            .export_journal()
-            .expect("export control journal")
-    };
+    let journal_after_conflict = fixture_control_journal(&publication.fixture, &publication.run);
     assert_eq!(journal_after_conflict, journal_after_adopt);
 
     let (status, exact_adoption_replay) = call(
@@ -189,15 +163,7 @@ fn adoption_replay_is_bound_to_source_identity_and_survives_later_revision_and_r
         .owner
         .association(&publication.fixture.actor, &publication.fixture.snapshot)
         .expect("binding after pause");
-    let digest = "e".repeat(64);
-    let commit = ContextControlCommand::Commit {
-        idempotency_key: "publication.adopt.ordinary-commit-after".to_owned(),
-        expected_control_version: paused_binding.boundary.control_version,
-        expected_revision_id: paused_binding.approved_revision_id.clone(),
-        expected_boundary: paused_binding.boundary.clone(),
-        preview_manifest_digest: digest.clone(),
-        approved_manifest_digest: digest,
-    };
+    let commit = commit_for_binding(&paused_binding, "publication.adopt.ordinary-commit-after");
     {
         let mut current = publication
             .fixture
@@ -261,14 +227,61 @@ fn adoption_replay_is_bound_to_source_identity_and_survives_later_revision_and_r
         publication_view_after_failed_commit["publications"],
         publication_view_before_conflict["publications"]
     );
-    let (status, committed) = call(
+    let journal_before_stale_retry =
+        fixture_control_journal(&publication.fixture, &publication.run);
+    let (status, stale_commit) = post_control_command(&publication, "publish-token", &commit);
+    assert_eq!(status, 409, "pre-reopen boundary is stale: {stale_commit}");
+    assert_eq!(error_code(&stale_commit), "context_control_boundary_stale");
+    assert_eq!(
+        fixture_control_journal(&publication.fixture, &publication.run),
+        journal_before_stale_retry,
+        "a stale post-reopen retry has no journal effect"
+    );
+    let (status, source_status_after_stale_retry) = call(
         Arc::clone(&publication.service),
         Arc::clone(&publication.auth),
-        "publish-token",
-        "POST",
-        &run_path(&publication.run, "context-control-commands"),
-        Some(&serde_json::to_vec(&commit).expect("ordinary commit JSON")),
+        "read-token",
+        "GET",
+        &run_path(&publication.run, "context-owner-source-status"),
+        None,
     );
+    assert_eq!(status, 200);
+    assert_eq!(
+        source_status_after_stale_retry, source_status_after_failed_commit,
+        "stale retry preserves the source and revision state"
+    );
+    let (status, publication_view_after_stale_retry) = call(
+        Arc::clone(&publication.service),
+        Arc::clone(&publication.auth),
+        "read-token",
+        "GET",
+        &run_path(&publication.run, "context-owner-published-sources"),
+        None,
+    );
+    assert_eq!(status, 200);
+    assert_eq!(
+        publication_view_after_stale_retry, publication_view_after_failed_commit,
+        "stale retry preserves the active publication pointer"
+    );
+    let reopened_binding = publication
+        .fixture
+        .owner
+        .association(&publication.fixture.actor, &publication.fixture.snapshot)
+        .expect("binding after failed commit recovery");
+    assert_eq!(
+        reopened_binding.boundary.controller_epoch,
+        paused_binding
+            .boundary
+            .controller_epoch
+            .checked_add(1)
+            .expect("recovered controller epoch"),
+        "opening the recovered journal advances its controller epoch"
+    );
+    let later_commit = commit_for_binding(
+        &reopened_binding,
+        "publication.adopt.ordinary-commit-after-reopen",
+    );
+    let (status, committed) = post_control_command(&publication, "publish-token", &later_commit);
     assert_eq!(status, 200, "ordinary later revision: {committed}");
     let later_revision_id = {
         let current = publication
@@ -288,20 +301,8 @@ fn adoption_replay_is_bound_to_source_identity_and_survives_later_revision_and_r
     assert_ne!(later_revision_id, adopted_binding.approved_revision_id);
 
     reopen_fixture_owner_store(&publication.fixture);
-    let journal_before_historical_replay = {
-        let current = publication
-            .fixture
-            .owner
-            .current
-            .lock()
-            .expect("owner lock");
-        current
-            .get(&publication.run)
-            .expect("reopened owner entry")
-            .authority
-            .export_journal()
-            .expect("export reopened control journal")
-    };
+    let journal_before_historical_replay =
+        fixture_control_journal(&publication.fixture, &publication.run);
     let (status, source_status_before_historical_replay) = call(
         Arc::clone(&publication.service),
         Arc::clone(&publication.auth),
