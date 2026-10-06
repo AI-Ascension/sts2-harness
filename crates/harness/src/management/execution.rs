@@ -4,14 +4,8 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use super::super::auth::AuthContext;
-use super::super::contract::{
-    EventClassification, EventPayload, EventType, PendingOperation, RecoveryAdmission, RunEvent,
-    RunRequest, RunSnapshot, TargetAdmissionBinding,
-};
-use super::super::service::{
-    CommandApplication, CommandContext, ManagementError, RunAdmission, RunReservation,
-    WorkflowExecutionPort,
-};
+use super::super::contract::{EventClassification, EventPayload, EventType, RunEvent, RunRequest};
+use super::super::service::{ManagementError, RunAdmission, RunReservation};
 use super::session::{LiveWorkflowOptions, LiveWorkflowSessionFactory};
 use crate::workflow::{CompiledWorkflow, StrictRuntime};
 
@@ -21,6 +15,8 @@ use super::execution_records::{
 
 #[path = "execution_admission.rs"]
 mod admission;
+#[path = "execution_port.rs"]
+mod port;
 #[path = "execution_recovery.rs"]
 mod recovery;
 use super::execution_state::{LiveNodeState, LiveRun};
@@ -57,102 +53,6 @@ impl LiveWorkflowExecutionPort {
                 "live session is unavailable after service restart",
             )
         })
-    }
-}
-
-impl WorkflowExecutionPort for LiveWorkflowExecutionPort {
-    fn submit(
-        &self,
-        _request: &RunRequest,
-        _actor: &AuthContext,
-        _definition_digest: &str,
-    ) -> Result<RunAdmission, ManagementError> {
-        Err(Self::unreserved_submission_error())
-    }
-
-    fn submit_admitted(
-        &self,
-        _request: &RunRequest,
-        _actor: &AuthContext,
-        _definition_digest: &str,
-        _admission: Option<&TargetAdmissionBinding>,
-    ) -> Result<RunAdmission, ManagementError> {
-        Err(Self::unreserved_submission_error())
-    }
-
-    fn submit_admitted_with_reservation(
-        &self,
-        request: &RunRequest,
-        actor: &AuthContext,
-        definition_digest: &str,
-        admission: Option<&TargetAdmissionBinding>,
-        reserve: &RunReservation,
-    ) -> Result<RunAdmission, ManagementError> {
-        let admission = admission.ok_or_else(|| {
-            ManagementError::conflict(
-                "target_admission_required",
-                "live execution requires an exact target admission binding",
-            )
-        })?;
-        if request.admission.as_ref() != Some(admission) {
-            return Err(ManagementError::conflict(
-                "target_admission_mismatch",
-                "execution admission does not match the submitted request",
-            ));
-        }
-        self.submit_inner(request, actor, definition_digest, reserve, false)
-    }
-
-    fn prepare_seed_candidate_with_reservation(
-        &self,
-        request: &RunRequest,
-        actor: &AuthContext,
-        definition_digest: &str,
-        admission: Option<&TargetAdmissionBinding>,
-        reserve: &RunReservation,
-    ) -> Result<RunAdmission, ManagementError> {
-        let admission = admission.ok_or_else(|| {
-            ManagementError::conflict(
-                "target_admission_required",
-                "live seed candidate requires an exact target admission binding",
-            )
-        })?;
-        if !reserve.is_seed_candidate() {
-            return Err(ManagementError::conflict(
-                "seed_candidate_reservation_missing",
-                "seed candidate path requires its service-owned seed reservation",
-            ));
-        }
-        if request.admission.as_ref() != Some(admission) {
-            return Err(ManagementError::conflict(
-                "target_admission_mismatch",
-                "execution admission does not match the submitted request",
-            ));
-        }
-        self.submit_inner(request, actor, definition_digest, reserve, true)
-    }
-
-    fn apply_command(
-        &self,
-        context: CommandContext,
-    ) -> Result<CommandApplication, ManagementError> {
-        super::execution_commands::apply_command(self, context, None)
-    }
-
-    fn apply_command_with_intent(
-        &self,
-        context: CommandContext,
-        record_intent: &dyn Fn(PendingOperation) -> Result<(), ManagementError>,
-    ) -> Result<CommandApplication, ManagementError> {
-        super::execution_commands::apply_command(self, context, Some(record_intent))
-    }
-
-    fn recovery_admission(&self, snapshot: &RunSnapshot) -> Option<RecoveryAdmission> {
-        recovery::admission(self, snapshot)
-    }
-
-    fn abort_submission(&self, run_id: &str) -> Result<(), ManagementError> {
-        recovery::abort(self, run_id)
     }
 }
 

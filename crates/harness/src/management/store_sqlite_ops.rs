@@ -29,6 +29,9 @@ pub(crate) use release::release_command;
 #[path = "store_sqlite_intent.rs"]
 mod intent;
 pub(super) use intent::record_operation_intent;
+#[path = "store_sqlite_sequence.rs"]
+mod sequence;
+pub(super) use sequence::next_sequence;
 
 pub(super) fn lookup_submission(
     store: &SqliteWorkflowStore,
@@ -284,27 +287,4 @@ pub(super) fn apply_command(
         .map_err(sqlite_error)?;
     transaction.commit().map_err(sqlite_error)?;
     Ok(response)
-}
-
-pub(super) fn next_sequence(
-    transaction: &rusqlite::Transaction<'_>,
-    run_id: &str,
-) -> Result<u64, StoreError> {
-    let sequence = transaction
-        .query_row(
-            "SELECT COALESCE(MAX(sequence), 0) + 1 FROM management_events
-             WHERE workflow_run_id = ?1",
-            [run_id],
-            |row| row.get::<_, i64>(0),
-        )
-        .map_err(sqlite_error)?;
-    let sequence = u64::try_from(sequence)
-        .map_err(|_| StoreError::new("sequence_overflow", "event sequence overflowed"))?;
-    if sequence == 0 || sequence > MAX_EVENTS_PER_RUN as u64 {
-        return Err(StoreError::new(
-            "event_limit",
-            "workflow event retention limit has been reached",
-        ));
-    }
-    Ok(sequence)
 }

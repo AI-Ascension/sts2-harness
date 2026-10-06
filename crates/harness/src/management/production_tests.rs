@@ -4,9 +4,8 @@
 
 use super::*;
 use crate::episode::{
-    ActionIdentity, BarrierError, BarrierPort, DecisionInput, DecisionSource, EpisodeLegalAction,
-    EpisodeLegalActionSet, EpisodeObservation, EpisodeStage, PolicyError, RecoveryError,
-    RecoveryPort, RuntimeLeaseBinding, ShutdownError, ShutdownPort, TransitionReceipt, WaitSample,
+    ActionIdentity, DecisionInput, DecisionSource, EpisodeLegalAction, EpisodeLegalActionSet,
+    EpisodeObservation, EpisodeStage, PolicyError, RuntimeLeaseBinding, TransitionReceipt,
 };
 use crate::management::{
     AuthContext, ContextOwnerControlLimits, LiveProviderPolicyPort, LiveRuntimeSessionFactory,
@@ -53,6 +52,9 @@ mod seed_v2_tests;
 #[path = "production_seed_v2_support.rs"]
 mod seed_v2_support;
 
+#[cfg(test)]
+#[path = "production_test_runtime_ports.rs"]
+mod runtime_ports;
 #[cfg(test)]
 #[path = "production_seed_v2_store_tests.rs"]
 mod seed_v2_store_tests;
@@ -129,53 +131,6 @@ impl EpisodeRuntimePort for Runtime {
             "dispatch is not part of the lease-binding regression",
             false,
         ))
-    }
-}
-
-impl BarrierPort for Runtime {
-    fn wait_for_transition(
-        &mut self,
-        _operation_id: &str,
-        _wait_for_millis: u32,
-    ) -> Result<WaitSample, BarrierError> {
-        Err(BarrierError::PortFailure)
-    }
-}
-
-impl RecoveryPort for Runtime {
-    fn reobserve(&mut self) -> Result<EpisodeObservation, RecoveryError> {
-        Ok(self.observation.clone())
-    }
-
-    fn reconcile(&mut self, _operation_id: &str) -> Result<TransitionReceipt, RecoveryError> {
-        Err(RecoveryError::Unsupported)
-    }
-
-    fn release_lease(&mut self) -> Result<(), RecoveryError> {
-        Ok(())
-    }
-
-    fn stop_episode(&mut self) -> Result<(), RecoveryError> {
-        let counters = &mut *self.counters.lock().expect("counter lock");
-        counters.stop_calls += 1;
-        if counters.stop_fault_on_call == Some(counters.stop_calls) {
-            return Err(RecoveryError::PortFailure);
-        }
-        Ok(())
-    }
-}
-
-impl ShutdownPort for Runtime {
-    fn release_lease(&mut self) -> Result<(), ShutdownError> {
-        Ok(())
-    }
-
-    fn close_mcp(&mut self) -> Result<(), ShutdownError> {
-        Ok(())
-    }
-
-    fn close_gateway(&mut self) -> Result<(), ShutdownError> {
-        Ok(())
     }
 }
 
