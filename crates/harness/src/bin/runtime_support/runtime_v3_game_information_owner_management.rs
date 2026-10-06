@@ -66,13 +66,24 @@ impl MemoryPolicyOwnerManagementPort for RuntimeGameInformationOwner {
         bearer: Option<&str>,
         command: PolicyCommand,
     ) -> Result<Value, ManagementError> {
-        let receipt = self
-            .owner
-            .execute(
-                self.management_access(bearer, &self.operator_grant_id),
-                command,
-            )
-            .map_err(management_owner_error)?;
+        #[cfg(test)]
+        let adoption_barrier = if matches!(&command, PolicyCommand::Adopt { .. }) {
+            Some(self.test_adoption_write_guard()?)
+        } else {
+            None
+        };
+        let receipt = self.owner.execute(
+            self.management_access(bearer, &self.operator_grant_id),
+            command,
+        );
+        #[cfg(test)]
+        if let Some(adoption_barrier) = adoption_barrier {
+            if receipt.is_ok() {
+                self.test_clock_after_adoption();
+            }
+            drop(adoption_barrier);
+        }
+        let receipt = receipt.map_err(management_owner_error)?;
         serde_json::to_value(receipt).map_err(|_| {
             ManagementError::store(
                 "memory_policy_receipt_encode",

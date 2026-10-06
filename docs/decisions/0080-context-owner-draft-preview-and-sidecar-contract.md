@@ -2,22 +2,28 @@
 
 ## Status
 
-Selected for T1; implementation pending. On 2026-10-04 the coordinating owner selected the contract
-below as the owner/consumer decision. This PR records that selection as documentation only. It adds
-no served route, durable record, Console adapter, sidecar, or process
-acceptance result. Harness #391 and Context Console #18 remain open through implementation and
-separate-process acceptance. This is not account-independent GitHub approval or native, provider,
-deployment, or production-host evidence.
+The coordinating owner selected this contract for T1 on 2026-10-04. That T1 change recorded the
+owner/consumer decision only; it added no served route, durable record, Console adapter, sidecar, or
+process acceptance. The current Harness #391 candidate implements the Harness owner routes and
+durable draft, revision, preview, mutation-receipt, and draft-publication records described below on
+context-control schema 3. Console #48 merged as `461bd9b71a25cd888f2c332e98c9e4e49294e390` and adds
+trusted subject-bound grant ingress. The production Console-to-Harness owner adapter and encrypted
+durable intent containing the exact original mutation request for recovery remain pending, as do
+the separate-process Console R3 response wire and recovery and the independently trusted ADR 0021
+sidecar join. Harness #391 and Context Console #18 remain open through their remaining criteria.
+This is not account-independent GitHub approval or native, provider, deployment, or production-host
+evidence.
 
 ## Context
 
-The Harness `ContextOwnerPort` in `crates/harness/src/management/context_owner_support.rs` currently
-supports binding and association reads, source status, control and control-receipt operations,
-immutable source publication, and source adoption. The management `PUT
-/v1/workflow-runs/{run_id}/context-sources/{source_id}` publishes an immutable
-`ContextSourceDocument`; `POST .../context-sources/{source_id}/adopt` makes an explicit final
-revision commit. The source status exposes source metadata, not content. None of these operations
-is mutable Console draft CRUD, revision history read, or preview create/read.
+At the T1 source baseline, the Harness `ContextOwnerPort` in
+`crates/harness/src/management/context_owner_support.rs` supported binding and association reads,
+source status, control and control-receipt operations, immutable source publication, and source
+adoption. The management `PUT /v1/workflow-runs/{run_id}/context-sources/{source_id}` publishes an
+immutable `ContextSourceDocument`; `POST .../context-sources/{source_id}/adopt` makes an explicit
+final revision commit. The current #391 candidate extends that owner boundary with the durable,
+run-scoped draft, item, revision, preview, exact mutation-receipt, and draft-publication operations
+described below. Source status still exposes metadata, not content.
 
 `ContextDraft` (`crates/harness/src/context_control/types.rs`) stores exact item references in
 `selected_items`, `notes`, and `objective`, plus selected item IDs in `pinned_item_ids`.
@@ -25,8 +31,9 @@ is mutable Console draft CRUD, revision history read, or preview create/read.
 `ContextSourceDocument` pairs the draft with the actual `ContextItem` bytes. The existing managed
 render path resolves references against an owner-supplied item registry and checks exact reference,
 content digest, scope, protection, and expiry (`context_control/render/admission.rs` and
-`membership_resolution.rs`). The durable source store retains encrypted immutable snapshots. That
-does not establish a persisted mutable-draft registry or an HTTP `eligible_items` operation today.
+`membership_resolution.rs`). The durable source store retains encrypted immutable snapshots. The
+current T2 implementation also persists owner-scoped drafts and derives eligible-item projections
+from stored owner records; a caller-supplied reference still cannot create eligibility.
 
 The owner already serves `POST
 /v1/workflow-runs/{run_id}/context-control-receipts/lookup` for recorded pause, commit, and resume
@@ -49,8 +56,8 @@ split selected by Harness #795 option C.
 
 ### Harness owns the durable scoped operations
 
-Harness remains the sole durable authority. Add a typed owner port and authenticated management
-operations for:
+Harness remains the sole durable authority. The current T2 candidate provides a typed owner port
+and authenticated management operations for:
 
 - listing eligible owner items for one run and draft, with metadata by default and item bytes only
   when the caller also has `workflow:context:content:read`;
@@ -59,21 +66,26 @@ operations for:
 - creating and reading an owner-rendered preview; and
 - recovering a durable draft/preview mutation receipt from the caller's exact original request.
 
-The candidate route family is `GET .../context-owner-items`, `GET/POST
+The current Harness route family serves `GET .../context-owner-items`, `GET/POST
 .../context-owner-drafts`, `GET/PATCH .../context-owner-drafts/{draft_id}`, paginated `GET
 .../context-owner-revisions`, direct `GET
 .../context-owner-revisions/{revision_id}`, `POST
 .../context-owner-drafts/{draft_id}/previews`, `GET
 .../context-owner-previews/{preview_id}`, and `POST
 .../context-owner-mutation-receipts/lookup`, all under
-`/v1/workflow-runs/{run_id}`. These are proposed routes, not routes that the current server serves.
+`/v1/workflow-runs/{run_id}`. The current source also serves `GET
+.../context-owner-published-sources`, `POST
+.../context-owner-drafts/{draft_id}/publications`, and `POST
+.../context-owner-draft-publication-receipts/lookup` for explicit immutable draft publication and
+its exact receipt recovery. These are Harness owner routes; they do not establish a Console
+production adapter or separate-process Console/Harness acceptance.
 The item-list request may ask for content explicitly; the owner must authorize and bound that
 projection independently. Draft, revision, preview, and receipt projections contain references and
 metadata only; raw owner item bytes, including new note/objective bytes, are returned only by the
 eligible-item content operation after its separate grant. That grant does not permit prepared
 provider-input display, capture enablement, or arbitrary content references. Revision lists are
 paginated and bounded, while direct revision lookup remains available when a Console-local
-reference index evicts an ID. The first implementation has no delete operation.
+reference index evicts an ID. The current implementation has no delete operation.
 
 Use new closed owner envelopes, independently versioned from the existing Console schemas and the
 inner `ascension.context-control.draft.v1` record. Initial names are
@@ -87,14 +99,13 @@ digest, blockers, effect class, and expiry; it never substitutes for or returns 
 input bytes.
 
 An eligible-item response is derived only from the current authenticated owner's durable
-run-scoped item/source records and binding. In today's implementation, `ContextSourceDocument.items`
-contains the bytes for an immutable source snapshot, while `ContextOwnerRenderRequest.registry` is
-an in-process render input; neither is a public eligible-item catalog. T2 must add a durable owner
-lookup over those owner-controlled records (and any newly authored items) and bind each returned
-reference to its exact source identity/revision. If the owner cannot resolve the item from that
-authority, it returns unavailable/unsupported. A caller-supplied item ID, version, hash, or
-`ContextItemRef` never creates eligibility: the owner must resolve the stored bytes and recheck the
-digest, scope, protection, and expiry before use.
+run-scoped item/source records and binding. `ContextSourceDocument.items` contains bytes for an
+immutable source snapshot, while `ContextOwnerRenderRequest.registry` remains an in-process render
+input; neither by itself is a public eligible-item catalog. The T2 owner lookup resolves stored
+owner-controlled records and binds each returned reference to its exact source identity/revision. If
+the owner cannot resolve the item from that authority, it returns unavailable/unsupported. A
+caller-supplied item ID, version, hash, or `ContextItemRef` never creates eligibility: the owner
+resolves stored bytes and rechecks the digest, scope, protection, and expiry before use.
 
 Draft patches preserve the following existing meaning:
 
@@ -109,8 +120,9 @@ Draft patches preserve the following existing meaning:
   is derived from the authenticated subject, not the request's `attributed_to` or `author_ref`.
   Newly authored note text is stored only in the owner's encrypted draft/item record, with the
   current 16-note and 4-KiB-per-note bounds, any lower owner-advertised limits, and the existing
-  total-context bound. The immutable
-  source published at commit carries the final item bytes in its existing encrypted source record.
+  total-context bound. The separate explicit draft-publication operation snapshots the final item
+  bytes into the existing encrypted immutable-source store; it does not automatically adopt that
+  source as the active revision.
 - **Objective:** the draft continues to reference a bounded owner-held item; the current render
   path enforces the 512-byte objective bound and any narrower advertised limit. Creating,
   replacing, or removing it requires the separate `workflow:context:objective:edit` authorization.
@@ -119,9 +131,9 @@ Draft patches preserve the following existing meaning:
 
 Newly authored note/objective bytes remain in owner-controlled encrypted records with the existing
 owner retention and expiry policy. They are never cached as authoritative Console state or copied to
-logs. The new schema migration preserves all existing encrypted source and receipt bytes and their
-AAD, and uses purpose-specific AAD for new record types. It does not extend retention or capture
-defaults.
+logs. The current schema-3 SQLite migration supports authenticated v1-to-v3 and additive v2-to-v3
+upgrades, preserving existing encrypted source and receipt bytes and AAD; new record types use
+purpose-specific AAD. It does not extend retention or capture defaults.
 
 ### Grants and actor binding
 
@@ -151,14 +163,16 @@ or `workflow:control` alone does not authorize objective edits. Objective edits 
 separate narrow scope or an existing authenticated `workflow:*` grant under unchanged wildcard
 semantics.
 
-At the inspected Console facade boundary, `CapabilityGrant` has no authenticated subject, the
-in-process `x-principal` field is copied from a caller header, and the checked source does not
-provide a production token issuer or verified-principal ingress. T2 must bind the subject from
-trusted protected authentication to the grant and owner credential, reject a mismatching
-`x-principal`, and make subjectless legacy grants fail closed for new actor-bound production owner
-operations. Keep demo/legacy composition separately labeled. A service-level protected auth
-reference may access only the owner subject it actually authenticates; it is not a substitute for
-per-request identity.
+The inspected T1 Console facade boundary lacked an authenticated subject on `CapabilityGrant`, and
+its `x-principal` field came from a caller header. Console #48's merge at
+`461bd9b71a25cd888f2c332e98c9e4e49294e390` adds trusted subject-bound grant ingress. Harness T2
+routes authorize the actor supplied by the Harness authentication context. The production
+Console-to-Harness adapter that forwards those grants and the protected owner credential, encrypted
+durable intent containing the exact original mutation request, and the separate-process Console R3
+response path remain pending. A caller-controlled `x-principal` remains insufficient proof of
+identity; subjectless legacy grants must fail closed for new actor-bound owner operations. Keep
+demo/legacy composition separately labeled. A service-level protected auth reference may access
+only the owner subject it actually authenticates; it is not a substitute for per-request identity.
 
 Draft/preview write receipts are distinct from `ContextControlReceipt` v2. A successful mutation
 commits its record change and terminal receipt atomically in the Harness owner store. The receipt
@@ -198,32 +212,33 @@ Keep `context_memory_record_unavailable` for the absent memory corpus. Keep live
 not create a serve-process broker registry or infer a session from metadata. Neither limitation
 changes the Console ADR 0021 trust rules.
 
-## Compatibility and first implementation partition
+## Compatibility and current implementation boundary
 
-This decision changes no currently served Harness route, Harness record, Console schema, receipt,
-fixture, protocol artifact, producer pin, default, or retention rule. Implement the owner operations
-as additive Harness-only envelopes and routes; the boundary has one named production consumer, so
-do not move it into `sts2-protocol`. The new scopes/envelopes are additive contracts, but the v1 to
-v2 owner-store migration is one-way for older binaries: an old reader that rejects the newer schema
-must not be used against a migrated store. Preserve old records and provide an implementation-level
-backup/rollback procedure; do not downgrade or rewrite authenticated bytes.
+The 2026-10-04 T1 selection changed no served Harness route or record. The current #391 source adds
+the selected owner envelopes and authenticated Harness routes without changing the existing Console
+public schemas, control-receipt v2, protocol artifacts, producer pins, defaults, or retention rules.
+Context-control SQLite schema 3 is a forward-only migration: fresh stores use v3 and authenticated
+v1/v2 stores upgrade to v3 additively. Older binaries that reject v3 must not open a migrated store;
+do not downgrade it or rewrite authenticated bytes. Snapshot the encrypted store before migration.
+Any rollback to an older binary requires restoring its matching pre-migration snapshot; this ADR
+requires that backup/rollback path but does not claim the operational procedure is implemented. The
+owner still uses the existing binding, source, render, and receipt seams.
 
-The first coherent source implementation is a Harness owner change adding durable draft/item,
-revision, preview, and mutation-receipt records plus an atomic store migration and the typed owner and
-HTTP operations. It reuses the existing owner, binding, source, render, and receipt seams and keeps
-control receipt v2 unchanged. Focused owner tests cover eligible-item resolution against actual
-stored bytes; metadata versus content grants; include/exclude and protected prerequisites;
-pin/unpin; attributed notes and bounds; objective denial without its separate grant; draft CAS and
-base-revision drift; preview from the production render path; objective success with a separate
-owner-verified grant; exact idempotent recovery; and generic same-ID/different-payload conflict.
-Existing source and receipt records must survive migration byte-for-byte and decrypt with their
-prior AAD.
+The current Harness candidate includes durable eligible-item, draft/CAS, revision, preview, exact
+mutation-receipt, and explicit draft-publication operations. Focused source tests cover stored-byte
+eligibility; metadata versus content grants; include/exclude and protected prerequisites; pin/unpin;
+attributed notes and bounds; objective denial without its separate grant; draft CAS and base-revision
+drift; preview from the production render path; objective success with an owner-verified grant; exact
+idempotent recovery; and generic same-ID/different-payload conflict. These are source-level and
+served owner tests, not separate-process Console/Harness acceptance.
 
-The next Console change adds trusted-subject grant issuance at a real authentication ingress and the
-production owner adapter. Keep the protected owner credential inside protected configuration; never
-put it in request bodies, URLs, owner records, browser storage, or logs. Do not advertise operations
-that the actual Harness owner cannot serve. Populate the sidecar only after the independent ADR 0021
-join succeeds.
+Console #48 now supplies trusted subject-bound grant ingress. The outbound Harness owner adapter,
+encrypted durable storage and replay of exact mutation requests, Console R3 response wire and
+cross-process recovery remain to be implemented and accepted; the independently trusted ADR 0021
+sidecar join is also pending. Keep the protected owner credential inside protected configuration;
+never put it in request bodies, URLs, owner records, browser storage, or logs. Populate the sidecar
+only after the exact trusted owner, descriptor, operation, source, revision, binding, and epoch join
+succeeds. Native, provider, deployment, and production-host evidence remain separate.
 
 Acceptance requires Harness and Console as separate real processes with the production auth ingress,
 not `RecordingOwner`, `NoopOwner`, a synthetic `ControlPlane`, or fixtures as authority. Exercise

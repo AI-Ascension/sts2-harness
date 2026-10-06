@@ -204,6 +204,23 @@ fn the_transcribed_allow_list_matches_the_gateway() {
     }
 }
 
+#[test]
+fn patch_client_requests_require_a_json_body() {
+    let client = ManagementClient::new(
+        "127.0.0.1:1".parse().expect("loopback address parses"),
+        "test-token",
+    )
+    .expect("management client accepts a loopback address");
+    let error = client
+        .request_json(
+            "PATCH",
+            "/v1/workflow-runs/run/context-owner-drafts/draft",
+            None,
+        )
+        .expect_err("PATCH requests require a JSON body before connecting");
+    assert_eq!(error.code, "body_required");
+}
+
 /// **Non-vacuity.** The guard above compares two consts, so a linter or a future
 /// edit could make the expected list track the actual one and the assertion would
 /// pass on a corrupted transcription. This is the substitution from #613 measured
