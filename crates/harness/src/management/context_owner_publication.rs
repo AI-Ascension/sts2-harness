@@ -171,8 +171,10 @@ mod tests {
     use super::*;
     use crate::context_control::ContextBoundary;
 
+    type TestResult = Result<(), Box<dyn std::error::Error>>;
+
     #[test]
-    fn publication_request_digest_matches_binary_golden_frame() {
+    fn publication_request_digest_matches_binary_golden_frame() -> TestResult {
         let request = ContextOwnerDraftPublicationRequest {
             schema_version: CONTEXT_OWNER_PUBLICATION_REQUEST_SCHEMA_VERSION.to_owned(),
             request_id: "request-test-0001".to_owned(),
@@ -212,19 +214,19 @@ mod tests {
         append_test_u64(&mut frame, request.expected_owner_state_version);
         append_test_lp(&mut frame, &request.expected_base_revision_id);
         append_test_lp(&mut frame, &request.expected_binding_id);
-        append_test_digest(&mut frame, &request.expected_binding_digest);
+        append_test_digest(&mut frame, &request.expected_binding_digest)?;
         let boundary = &request.expected_boundary;
         append_test_lp(&mut frame, &boundary.run_id);
         append_test_lp(&mut frame, &boundary.episode_id);
         append_test_lp(&mut frame, &boundary.agent_id);
         append_test_lp(&mut frame, &boundary.state_id);
         append_test_u64(&mut frame, boundary.generation);
-        append_test_digest(&mut frame, &boundary.observation_sha256);
-        append_test_digest(&mut frame, &boundary.catalog_sha256);
+        append_test_digest(&mut frame, &boundary.observation_sha256)?;
+        append_test_digest(&mut frame, &boundary.catalog_sha256)?;
         append_test_lp(&mut frame, &boundary.adapter_revision);
         append_test_lp(&mut frame, &boundary.model_revision);
-        append_test_digest(&mut frame, &boundary.configuration_sha256);
-        append_test_digest(&mut frame, &boundary.output_schema_sha256);
+        append_test_digest(&mut frame, &boundary.configuration_sha256)?;
+        append_test_digest(&mut frame, &boundary.output_schema_sha256)?;
         append_test_u64(&mut frame, boundary.controller_epoch);
         append_test_u64(&mut frame, boundary.gate_epoch);
         append_test_u64(&mut frame, boundary.control_version);
@@ -232,7 +234,8 @@ mod tests {
         let expected = "d723f9d3f5cea47713025ffaf09889201f22dc8305a8a69f2646f88cf4b1333c";
         assert_eq!(frame.len(), 530);
         assert_eq!(crate::sha256_hex(&frame), expected);
-        assert_eq!(request.digest().expect("request digest"), expected);
+        assert_eq!(request.digest()?, expected);
+        Ok(())
     }
 
     fn append_test_lp(frame: &mut Vec<u8>, value: &str) {
@@ -244,13 +247,12 @@ mod tests {
         frame.extend_from_slice(&value.to_be_bytes());
     }
 
-    fn append_test_digest(frame: &mut Vec<u8>, value: &str) {
+    fn append_test_digest(frame: &mut Vec<u8>, value: &str) -> TestResult {
         for pair in value.as_bytes().chunks_exact(2) {
-            let high = u8::from_str_radix(std::str::from_utf8(&pair[..1]).expect("hex"), 16)
-                .expect("hex digit");
-            let low = u8::from_str_radix(std::str::from_utf8(&pair[1..]).expect("hex"), 16)
-                .expect("hex digit");
+            let high = u8::from_str_radix(std::str::from_utf8(&pair[..1])?, 16)?;
+            let low = u8::from_str_radix(std::str::from_utf8(&pair[1..])?, 16)?;
             frame.push(high << 4 | low);
         }
+        Ok(())
     }
 }
