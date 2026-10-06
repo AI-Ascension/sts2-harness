@@ -64,6 +64,7 @@ pub mod exo_bridge_configuration;
 pub mod exo_lifecycle;
 pub mod exo_lookup_process;
 pub mod exo_lookup_wire;
+pub mod exo_private_state;
 mod exo_process;
 pub mod game_information;
 pub mod game_information_binding;

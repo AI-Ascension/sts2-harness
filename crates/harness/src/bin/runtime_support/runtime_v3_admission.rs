@@ -27,6 +27,7 @@ use sts2_harness::exo_admission::{
     AdmittedExoRuntimeTransport, ExoAdmissionMode, ExoAdmissionPlan, ExoAdmissionRefusal,
     ExoInspectedArtifacts, ExoRuntimeAdmission,
 };
+use sts2_harness::exo_bridge_configuration::PrivateStateProfile;
 use sts2_harness::{
     EXO_CONTRACT_VERSION, ExoContextMode, ExoIdentity, ExoLimits, ExoPlatform, ExoProcessConfig,
     ExoProcessTransport, ExoProfile, ExoRestrictedProfile, ExoRuntime, ExoTrustedConfiguration,
@@ -137,9 +138,14 @@ fn enveloped(
     }
     drop(artifacts);
     let inspected = inspected_deployment(process, &package_path, native_instance_id)?;
+    if let PrivateStateProfile::GuardedV2(policy) = &inspected.private_state
+        && policy != &trusted.restricted.state
+    {
+        return Err("Exo guarded private-state policy does not match trusted profile".to_owned());
+    }
     let plan = ExoAdmissionPlan::new(
         trusted,
-        inspected,
+        inspected.identity,
         required("STS2_EXO_MODEL_EXECUTION_ID")?,
         required("STS2_EXO_REQUEST_ID")?,
         required("STS2_EXO_TURN_ID")?,
