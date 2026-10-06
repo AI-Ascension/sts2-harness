@@ -19,6 +19,7 @@ pub(super) use export::export;
 #[path = "store_sqlite_create.rs"]
 mod create;
 pub(crate) use create::create_run;
+pub(crate) use create::create_seeded_run;
 #[path = "store_sqlite_submission.rs"]
 mod submission;
 pub(crate) use submission::update_run_snapshot;
@@ -28,6 +29,9 @@ pub(crate) use release::release_command;
 #[path = "store_sqlite_intent.rs"]
 mod intent;
 pub(super) use intent::record_operation_intent;
+#[path = "store_sqlite_sequence.rs"]
+mod sequence;
+pub(super) use sequence::next_sequence;
 
 pub(super) fn lookup_submission(
     store: &SqliteWorkflowStore,
@@ -220,6 +224,27 @@ pub(super) fn apply_command(
             "execution port returned an unexpected run revision",
         ));
     }
+    let seed_record = transaction
+        .query_row(
+            "SELECT record FROM management_seed_bindings WHERE workflow_run_id = ?1",
+            [request.run_id.as_str()],
+            |row| row.get::<_, Vec<u8>>(0),
+        )
+        .optional()
+        .map_err(sqlite_error)?;
+    if let Some(bytes) = seed_record {
+        let record = decode::<super::super::super::contract_seed_v2::StoredSeedBindingV2>(&bytes)?;
+        super::super::super::seed_v2_crypto::validate_candidate_record(&record)
+            .map_err(|_| StoreError::new("store_corrupt", "stored seed binding is invalid"))?;
+        if snapshot.admission.as_ref() != Some(&record.admitted_configuration)
+            || application.snapshot.admission.as_ref() != Some(&record.admitted_configuration)
+        {
+            return Err(StoreError::new(
+                "seed_admission_immutable",
+                "a seed-bound run cannot change its owner admission tuple",
+            ));
+        }
+    }
     let sequence = next_sequence(&transaction, &request.run_id)?;
     let classification = application.outcome.classification(&application.reason_code);
     if let Some(record) = &record {
@@ -262,27 +287,4 @@ pub(super) fn apply_command(
         .map_err(sqlite_error)?;
     transaction.commit().map_err(sqlite_error)?;
     Ok(response)
-}
-
-pub(super) fn next_sequence(
-    transaction: &rusqlite::Transaction<'_>,
-    run_id: &str,
-) -> Result<u64, StoreError> {
-    let sequence = transaction
-        .query_row(
-            "SELECT COALESCE(MAX(sequence), 0) + 1 FROM management_events
-             WHERE workflow_run_id = ?1",
-            [run_id],
-            |row| row.get::<_, i64>(0),
-        )
-        .map_err(sqlite_error)?;
-    let sequence = u64::try_from(sequence)
-        .map_err(|_| StoreError::new("sequence_overflow", "event sequence overflowed"))?;
-    if sequence == 0 || sequence > MAX_EVENTS_PER_RUN as u64 {
-        return Err(StoreError::new(
-            "event_limit",
-            "workflow event retention limit has been reached",
-        ));
-    }
-    Ok(sequence)
 }

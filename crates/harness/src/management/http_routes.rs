@@ -8,6 +8,7 @@ use super::super::contract_authoring::{
     StudioCreateDraftRequest, StudioPublishDraftRequest, StudioSaveDraftRequest,
 };
 use super::super::contract_authoring_inference::AuthoringInferenceRequest;
+use super::super::contract_seed_v2::WorkflowRunRequestV2;
 use super::super::service::InferenceProfileRevisionRequest;
 use super::response::reason_phrase;
 use super::*;
@@ -48,6 +49,12 @@ pub(super) fn dispatch(
                 let body: RunRequest = decode_body_management(&request.body)?;
                 service
                     .submit_run(&actor, body)
+                    .and_then(|value| json_value(&value))
+            }
+            ("POST", "/v2/workflow-runs") if request.query.is_empty() => {
+                let body: WorkflowRunRequestV2 = decode_body_management(&request.body)?;
+                service
+                    .submit_seeded_run_v2(&actor, body)
                     .and_then(|value| json_value(&value))
             }
             ("GET", "/v1/workflow-targets") if request.query.is_empty() => service
@@ -97,6 +104,9 @@ fn dispatch_studio_or_run_route(
     actor: &super::super::auth::AuthContext,
     bearer: Option<&str>,
 ) -> Result<Value, ManagementError> {
+    if request.path.starts_with("/v2/workflow-runs/") {
+        return dispatch_seed_v2_route(request, service, actor);
+    }
     if request.path.starts_with("/v1/studio/authoring-inference") {
         return dispatch_studio_authoring_inference_route(request, service, actor);
     }
@@ -118,6 +128,25 @@ fn dispatch_studio_or_run_route(
         });
     }
     super::routes_run::dispatch_run_route(request, service, actor)
+}
+
+fn dispatch_seed_v2_route(
+    request: &HttpRequest,
+    service: &ManagementService,
+    actor: &super::super::auth::AuthContext,
+) -> Result<Value, ManagementError> {
+    let segments = request.path.split('/').collect::<Vec<_>>();
+    match (request.method.as_str(), segments.as_slice()) {
+        ("GET", ["", "v2", "workflow-runs", run_id, "seed-binding"])
+            if request.query.is_empty() =>
+        {
+            validate_identifier("workflow_run_id", run_id).map_err(ManagementError::from)?;
+            service
+                .seed_binding_v2(actor, run_id)
+                .and_then(|value| json_value(&value))
+        }
+        _ => Err(route_not_found()),
+    }
 }
 
 /// `POST /v1/inference-profiles/{profile_id}/revisions` — the admitted edit

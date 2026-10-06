@@ -66,6 +66,10 @@ mod provider_policy_ops;
 mod provider_session_support;
 #[path = "service_read.rs"]
 mod read;
+#[path = "service_seed_v2.rs"]
+mod seed_v2;
+#[path = "service_seed_v2_support.rs"]
+mod seed_v2_support;
 #[path = "service_submission.rs"]
 mod submission;
 #[path = "service_support.rs"]
@@ -130,133 +134,16 @@ impl From<StoreError> for ManagementError {
     }
 }
 
-pub trait DefinitionPort: Send + Sync {
-    fn validate(
-        &self,
-        definition: &Value,
-        capabilities: &Value,
-    ) -> Result<ValidationResult, ManagementError>;
-
-    fn inspect(&self, definition: &Value) -> Result<InspectionResult, ManagementError>;
-
-    fn diff(
-        &self,
-        old_definition: &Value,
-        new_definition: &Value,
-    ) -> Result<DiffResult, ManagementError>;
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ValidationResult {
-    pub definition_digest: String,
-    pub compiler: String,
-    pub diagnostics: Vec<Diagnostic>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct InspectionResult {
-    pub definition_digest: String,
-    pub workflow_id: Option<String>,
-    pub workflow_version: Option<String>,
-    pub required_capabilities: Vec<String>,
-    pub graph_count: u64,
-    pub node_count: u64,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct DiffResult {
-    pub old_definition_digest: String,
-    pub new_definition_digest: String,
-    pub semantic_change: bool,
-    pub changed_paths: Vec<String>,
-}
-
+#[path = "service_contracts.rs"]
+mod service_contracts;
 pub use execution_types::{
     CommandApplication, CommandContext, RunAdmission, RunReservation, WorkflowExecutionPort,
 };
-
-pub trait WorkflowReplayPort: Send + Sync {
-    fn replay(
-        &self,
-        request: &ReplayRequest,
-        snapshot: &RunSnapshot,
-        events: &[RunEvent],
-    ) -> Result<ReplayResult, ManagementError>;
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ReplayResult {
-    pub matched: bool,
-    pub compared_events: u64,
-    pub first_divergence: Option<ReplayDivergence>,
-}
-
-pub trait CapabilityPort: Send + Sync {
-    fn capabilities(&self) -> Result<Value, ManagementError>;
-
-    /// Returns the caller-scoped run-target catalog. This is separate from
-    /// the capability value because instance identity and availability are
-    /// authority-owned metadata, not workflow JSON.
-    fn target_catalog(
-        &self,
-        _actor: &AuthContext,
-    ) -> Result<super::contract::TargetCatalogResponse, ManagementError> {
-        Err(ManagementError::unavailable(
-            "target_catalog_unavailable",
-            "target discovery is not attached to this workflow owner",
-        ))
-    }
-
-    /// Returns the caller-scoped inference-profile catalog, or `None` when the
-    /// owner serves none. An absent catalog keeps the capability-prefix
-    /// admission of decision references; a served catalog is authoritative and
-    /// every decision/planner reference must resolve in it before inference.
-    fn inference_profile_catalog(
-        &self,
-        _actor: &AuthContext,
-    ) -> Result<Option<super::contract::InferenceProfileCatalog>, ManagementError> {
-        Ok(None)
-    }
-}
-
-/// The harness-owned integration boundary for context evidence. Implementations
-/// receive only the authoritative workflow snapshot and return redacted,
-/// scope-bound metadata. They cannot execute a provider or mutate a run.
-pub trait ContextInspectionPort: Send + Sync {
-    fn inspect(
-        &self,
-        actor: &AuthContext,
-        snapshot: &RunSnapshot,
-    ) -> Result<ContextInspectionResult, ManagementError>;
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ContextInspectionResult {
-    pub context: ContextAssociationContext,
-    pub capture: ContextCaptureEvidence,
-    pub capabilities: ContextInspectionCapabilities,
-}
-
-/// The harness-owned boundary for provider-session metadata. Implementations
-/// receive an already-authorized workflow snapshot and may return only the
-/// bounded summaries below. They cannot accept native IDs, issue provider
-/// commands, or make a browser-controlled cross-namespace lookup.
-pub trait ProviderSessionInspectionPort: Send + Sync {
-    fn list(
-        &self,
-        actor: &AuthContext,
-        snapshot: &RunSnapshot,
-    ) -> Result<ProviderSessionInspectionResult, ManagementError>;
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ProviderSessionInspectionResult {
-    pub workflow_run_id: String,
-    pub bindings: Vec<ProviderSessionBindingSummary>,
-    pub operations: Vec<ProviderSessionOperationSummary>,
-    pub next_cursor: Option<String>,
-}
-
+pub use service_contracts::{
+    CapabilityPort, ContextInspectionPort, ContextInspectionResult, DefinitionPort, DiffResult,
+    InspectionResult, ProviderSessionInspectionPort, ProviderSessionInspectionResult, ReplayResult,
+    ValidationResult, WorkflowReplayPort,
+};
 pub struct ManagementService {
     store: Arc<dyn WorkflowStore>,
     authoring: Arc<dyn AuthoringStore>,
@@ -272,6 +159,7 @@ pub struct ManagementService {
     live_provider_policy: Arc<dyn LiveProviderPolicyPort>,
     memory_policy_owner: Arc<dyn MemoryPolicyOwnerManagementPort>,
     provider_session_capabilities: Option<crate::provider_session::NativeCapabilities>,
+    seed_derivation_keys: Option<Arc<dyn super::SeedDerivationKeyAuthority>>,
     process_lifecycle: Arc<dyn super::lifecycle::ProcessLifecyclePort>,
     lifecycle_intents: Option<Arc<std::sync::Mutex<super::lifecycle_intent::LifecycleIntentStore>>>,
     journal: Arc<dyn InferenceProfileRevisionJournal>,
@@ -302,6 +190,7 @@ impl ManagementService {
                 memory_policy_owner_ops::UnavailableMemoryPolicyOwnerManagementPort,
             ),
             provider_session_capabilities: None,
+            seed_derivation_keys: None,
             process_lifecycle: Arc::new(super::lifecycle::UnavailableProcessLifecyclePort),
             lifecycle_intents: None,
             journal: Arc::new(UnavailableInferenceProfileRevisionJournal),
@@ -313,6 +202,20 @@ impl ManagementService {
     pub fn with_execution_port(mut self, port: Arc<dyn WorkflowExecutionPort>) -> Self {
         self.execution = port;
         self
+    }
+
+    /// Attaches an immutable, service-only versioned seed key authority. A
+    /// missing authority leaves v2 derive-once requests typed unavailable.
+    pub fn with_seed_derivation_key_authority(
+        mut self,
+        authority: Arc<dyn super::SeedDerivationKeyAuthority>,
+    ) -> Self {
+        self.seed_derivation_keys = Some(authority);
+        self
+    }
+
+    pub(super) fn seed_derivation_keys(&self) -> Option<&dyn super::SeedDerivationKeyAuthority> {
+        self.seed_derivation_keys.as_deref()
     }
 
     pub fn with_replay_port(mut self, port: Arc<dyn WorkflowReplayPort>) -> Self {

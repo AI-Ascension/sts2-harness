@@ -38,6 +38,7 @@ pub(super) fn serve() -> Result<(), String> {
         production_context_owner::Configuration::from_environment()?,
     )?);
     let owner = Arc::new(policy.open_owner()?);
+    let seed_key_authority = seed_keys::authority_from_environment()?;
     let provider_policy: Arc<dyn LiveProviderPolicyPort> =
         Arc::new(ProviderSessionPolicyOwnerPort::new(Arc::clone(&owner)));
     let command_port: Arc<dyn ProviderSessionPolicyCommandPort> = Arc::new(
@@ -46,7 +47,17 @@ pub(super) fn serve() -> Result<(), String> {
     // The served effective-limits record is built from the same descriptor the
     // session factory admits provider sessions against.
     let served_capabilities = policy.capabilities.clone();
-    sts2_harness::management::serve_live_with_lifecycle(
+    let mut owner_services = sts2_harness::management::ServedOwnerServices::new(
+        sts2_harness::management::ServedOwnerPorts {
+            provider_policy: Arc::clone(&provider_policy),
+            command_port: Arc::clone(&command_port),
+            context_owner: context_owner.clone(),
+        },
+    );
+    if let Some(authority) = seed_key_authority {
+        owner_services = owner_services.with_seed_derivation_keys(authority);
+    }
+    sts2_harness::management::serve_live_with_lifecycle_and_owner_services(
         listen,
         &store,
         authenticator,
@@ -56,11 +67,7 @@ pub(super) fn serve() -> Result<(), String> {
             policy.capabilities,
             Arc::clone(&context_owner),
         )?,
-        sts2_harness::management::ServedOwnerPorts {
-            provider_policy,
-            command_port,
-            context_owner,
-        },
+        owner_services,
         served_capabilities,
         lifecycle_owner::owner()?,
     )
@@ -124,55 +131,20 @@ mod capture;
 #[path = "workflow_service_dispatch_ledger.rs"]
 mod dispatch_ledger;
 
+#[path = "workflow_service_seed.rs"]
+mod seed_keys;
+
 #[path = "workflow_service_inference_profiles.rs"]
 mod inference_profiles;
 #[path = "workflow_service_policy.rs"]
 mod policy;
 #[path = "workflow_service_profile_dispatch.rs"]
 mod profile_dispatch;
+#[path = "workflow_service_provider_policy_key.rs"]
+mod provider_policy_key;
 use policy::ProviderPolicyConfiguration;
 use profile_dispatch::Provider;
-
-fn valid_environment_name(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= 128
-        && value.bytes().enumerate().all(|(index, byte)| {
-            matches!(byte, b'A'..=b'Z' | b'0'..=b'9' | b'_')
-                && (index != 0 || matches!(byte, b'A'..=b'Z' | b'_'))
-        })
-}
-
-fn provider_policy_key(reference: &str) -> Result<[u8; 32], String> {
-    let encoded = std::env::var(reference)
-        .map_err(|_| format!("provider-policy key reference {reference} is unavailable"))?;
-    let bytes = encoded.as_bytes();
-    if bytes.len() != 64 {
-        return Err(String::from(
-            "provider-policy key must be exactly 64 hexadecimal characters",
-        ));
-    }
-    let mut key = [0_u8; 32];
-    for (index, slot) in key.iter_mut().enumerate() {
-        let high = hex_nibble(bytes[index * 2])
-            .ok_or_else(|| String::from("provider-policy key must be hexadecimal"))?;
-        let low = hex_nibble(bytes[index * 2 + 1])
-            .ok_or_else(|| String::from("provider-policy key must be hexadecimal"))?;
-        *slot = (high << 4) | low;
-    }
-    if key.iter().all(|value| *value == 0) {
-        return Err(String::from("provider-policy key must not be all zeroes"));
-    }
-    Ok(key)
-}
-
-fn hex_nibble(value: u8) -> Option<u8> {
-    match value {
-        b'0'..=b'9' => Some(value - b'0'),
-        b'a'..=b'f' => Some(value - b'a' + 10),
-        b'A'..=b'F' => Some(value - b'A' + 10),
-        _ => None,
-    }
-}
+use provider_policy_key::{provider_policy_key, valid_environment_name};
 
 struct Catalog;
 impl LiveTargetCatalogPort for Catalog {

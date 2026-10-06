@@ -283,10 +283,18 @@ pub(super) fn submit(
 /// from the request and the bound definition digest, so a submission that never reaches that
 /// derivation still has to name the identity its configured authority would have carried.
 pub(super) fn live_port(counters: &Shared<Counters>, run_id: &str) -> LiveWorkflowExecutionPort {
+    live_port_with_catalog(counters, run_id, Arc::new(LiveCatalog))
+}
+
+pub(super) fn live_port_with_catalog(
+    counters: &Shared<Counters>,
+    run_id: &str,
+    catalog: Arc<dyn LiveTargetCatalogPort>,
+) -> LiveWorkflowExecutionPort {
     let factory: Arc<dyn LiveWorkflowSessionFactory> = Arc::new(
         ProductionLiveWorkflowSessionFactory::new(
             serde_json::json!({"capabilities": []}),
-            Arc::new(LiveCatalog),
+            catalog,
             Arc::new(RuntimeFactory {
                 authority: RuntimeAuthorityBinding {
                     instance_id: INSTANCE_ID.to_owned(),

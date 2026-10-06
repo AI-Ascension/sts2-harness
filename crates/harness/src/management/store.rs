@@ -5,9 +5,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use super::contract::{
-    CommandRequest, CommandResponse, EventPage, ExportResponse, MANAGEMENT_SCHEMA_VERSION,
-    MAX_STORE_BYTES, PendingOperation, PersistedStore, RunEvent, RunSnapshot,
+    CommandResponse, MANAGEMENT_SCHEMA_VERSION, MAX_STORE_BYTES, PersistedStore, RunSnapshot,
 };
+use super::contract_seed_v2::{StoredSeedBindingV2, StoredSeedOperationV2};
 
 #[path = "store_file.rs"]
 mod file;
@@ -17,6 +17,10 @@ mod memory;
 mod ops;
 #[path = "store_sqlite.rs"]
 mod sqlite;
+
+#[path = "store_workflow.rs"]
+mod workflow;
+pub use workflow::WorkflowStore;
 
 use ops::{io_store_error, persist};
 
@@ -50,6 +54,56 @@ pub enum SubmissionLookup {
     Conflict,
 }
 
+pub enum SeedBindingLookup {
+    Missing,
+    Existing(Box<SeedBindingRecord>),
+    Conflict,
+}
+
+pub enum SeedOperationLookup {
+    Missing,
+    Prepared(Box<SeedOperationRecord>),
+    CandidatePersisted(Box<SeedBindingRecord>),
+    Conflict,
+}
+
+/// Opaque persisted key-selection record. It contains only public key
+/// identity/commitment metadata, never key material or the derived seed.
+#[derive(Clone)]
+pub struct SeedOperationRecord(StoredSeedOperationV2);
+
+impl SeedOperationRecord {
+    pub(crate) fn new(record: StoredSeedOperationV2) -> Self {
+        Self(record)
+    }
+
+    pub(crate) fn record(&self) -> &StoredSeedOperationV2 {
+        &self.0
+    }
+
+    pub(crate) fn into_record(self) -> StoredSeedOperationV2 {
+        self.0
+    }
+}
+
+/// Opaque store-owned seed material. Its public wrapper can cross the store
+/// trait without exposing serialization, debug formatting, or record fields.
+pub struct SeedBindingRecord(StoredSeedBindingV2);
+
+impl SeedBindingRecord {
+    pub(crate) fn new(record: StoredSeedBindingV2) -> Self {
+        Self(record)
+    }
+
+    pub(crate) fn record(&self) -> &StoredSeedBindingV2 {
+        &self.0
+    }
+
+    pub(crate) fn into_record(self) -> StoredSeedBindingV2 {
+        self.0
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CommandAcceptance {
     New {
@@ -69,130 +123,6 @@ pub struct CommandApplication {
     pub snapshot: RunSnapshot,
     pub outcome: super::contract::CommandOutcome,
     pub reason_code: String,
-}
-
-pub trait WorkflowStore: Send + Sync {
-    /// Whether this store atomically retains bounded context metadata with a
-    /// command result. Unsupported stores cannot enable the opt-in service.
-    fn supports_context_binding_history(&self) -> bool {
-        false
-    }
-
-    /// Checks bounded history capacity before a new step crosses any owner or
-    /// execution port. Exact command replay must bypass this admission check.
-    fn check_context_binding_history_capacity(&self, _run_id: &str) -> Result<(), StoreError> {
-        Err(StoreError::new(
-            "context_history_unavailable",
-            "context history is unsupported",
-        ))
-    }
-
-    fn recorded_context_binding(
-        &self,
-        _run_id: &str,
-        _node_execution_id: &str,
-    ) -> Result<Option<super::RecordedContextBinding>, StoreError> {
-        Err(StoreError::new(
-            "context_history_unavailable",
-            "context history is unsupported",
-        ))
-    }
-
-    /// Commits historical evidence and result together, or neither. The binding
-    /// must match the accepted pre-command cursor, not the advanced snapshot.
-    fn apply_command_with_context_binding(
-        &self,
-        request: &CommandRequest,
-        request_digest: &str,
-        application: CommandApplication,
-        record: super::RecordedContextBinding,
-    ) -> Result<CommandResponse, StoreError> {
-        let _ = (request, request_digest, application, record);
-        Err(StoreError::new(
-            "context_history_unavailable",
-            "context history is unsupported",
-        ))
-    }
-
-    fn lookup_submission(
-        &self,
-        request_id: &str,
-        request_digest: &str,
-    ) -> Result<SubmissionLookup, StoreError>;
-
-    fn create_run(
-        &self,
-        request_id: &str,
-        request_digest: &str,
-        snapshot: RunSnapshot,
-        initial_events: Vec<RunEvent>,
-    ) -> Result<(), StoreError>;
-
-    /// Atomically replace the durable submission snapshot after the execution
-    /// boundary settles. Implementations must preserve the request identity,
-    /// definition digest, and exact target admission binding established by
-    /// `create_run`.
-    ///
-    /// Stores that cannot update a reserved submission fail closed. Live
-    /// execution callers must not treat an unsupported update as success.
-    fn update_run_snapshot(
-        &self,
-        _request_id: &str,
-        _request_digest: &str,
-        _snapshot: RunSnapshot,
-    ) -> Result<(), StoreError> {
-        Err(StoreError::new(
-            "snapshot_update_unavailable",
-            "workflow store does not support reserved snapshot updates",
-        ))
-    }
-
-    fn get_run(&self, run_id: &str) -> Result<Option<RunSnapshot>, StoreError>;
-
-    fn events(
-        &self,
-        run_id: &str,
-        after_sequence: u64,
-        limit: u64,
-    ) -> Result<EventPage, StoreError>;
-
-    fn accept_command(
-        &self,
-        request: &CommandRequest,
-        request_digest: &str,
-    ) -> Result<CommandAcceptance, StoreError>;
-
-    fn apply_command(
-        &self,
-        request: &CommandRequest,
-        request_digest: &str,
-        application: CommandApplication,
-    ) -> Result<CommandResponse, StoreError>;
-
-    /// Persist an operation intent while its command remains in flight.
-    ///
-    /// The run revision is intentionally unchanged: command application still
-    /// commits the next revision atomically after the effect settles or becomes
-    /// explicitly unresolved.
-    fn record_operation_intent(
-        &self,
-        _run_id: &str,
-        _expected_revision: u64,
-        _pending: PendingOperation,
-    ) -> Result<(), StoreError> {
-        Err(StoreError::new(
-            "intent_persistence_unavailable",
-            "workflow store does not support durable operation intents",
-        ))
-    }
-
-    fn release_command(
-        &self,
-        request: &CommandRequest,
-        request_digest: &str,
-    ) -> Result<(), StoreError>;
-
-    fn export(&self, run_id: &str, redacted: bool) -> Result<ExportResponse, StoreError>;
 }
 
 struct StoreCore {
