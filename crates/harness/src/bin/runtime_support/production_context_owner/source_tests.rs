@@ -184,6 +184,7 @@ fn production_owner_activates_adopted_source_and_returns_descriptor_selected_lim
             runtime_lease_id: runtime_binding.lease_id.clone(),
             runtime_lease_epoch: runtime_binding.lease_epoch,
             admitted_control_limits: control_limits.clone(),
+            trusted_render: None,
         },
     );
 

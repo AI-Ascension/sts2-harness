@@ -84,6 +84,15 @@ impl Owner {
                 "actor cannot adopt a context source for this workflow run",
             ));
         }
+        if source_id.starts_with("ownerpub.")
+            && !self
+                .configuration
+                .sources
+                .iter()
+                .any(|source| source.source_id == source_id)
+        {
+            return self.adopt_published_source_current(actor, snapshot, source_id, request);
+        }
         let run = self.validate_snapshot_owner(actor, snapshot)?;
         let advertised = self.advertised_source(source_id)?;
         let catalog = self.catalog(actor)?;
@@ -261,4 +270,4 @@ mod tests;
 mod source_render;
 #[path = "source_validation.rs"]
 mod source_validation;
-use source_validation::{source_valid_until, unix_time, validate_document};
+pub(super) use source_validation::{source_valid_until, unix_time, validate_document};

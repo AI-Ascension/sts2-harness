@@ -3,8 +3,11 @@
 use std::sync::Arc;
 
 use super::super::context_owner::{
-    CONTEXT_OWNER_ASSOCIATION_VIEW_SCHEMA, ContextControlReceipt, ContextOwnerAssociationView,
-    ContextOwnerEffectiveLimitsView, ContextOwnerRenderRequest,
+    CONTEXT_OWNER_ASSOCIATION_VIEW_SCHEMA, CONTEXT_OWNER_PUBLICATION_LOOKUP_SCHEMA_VERSION,
+    CONTEXT_OWNER_PUBLICATION_SCHEMA_VERSION, CONTEXT_OWNER_PUBLISHED_SOURCES_VIEW_SCHEMA_VERSION,
+    ContextControlReceipt, ContextOwnerAssociationView, ContextOwnerDraftPublicationLookupRequest,
+    ContextOwnerDraftPublicationReceipt, ContextOwnerDraftPublicationRequest,
+    ContextOwnerEffectiveLimitsView, ContextOwnerPublishedSourcesView, ContextOwnerRenderRequest,
 };
 use super::super::context_owner::{ContextBindingCatalog, ContextOwnerBinding, ContextOwnerPort};
 use super::support::authorize;
@@ -24,6 +27,12 @@ mod binding;
 
 #[path = "service_context_owner_control.rs"]
 mod control;
+
+#[path = "service_context_drafts.rs"]
+mod drafts;
+
+#[path = "service_context_owner_publication.rs"]
+mod publication;
 
 impl ManagementService {
     pub fn with_context_owner_port(mut self, port: Arc<dyn ContextOwnerPort>) -> Self {

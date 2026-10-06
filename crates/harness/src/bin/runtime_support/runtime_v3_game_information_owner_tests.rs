@@ -61,6 +61,9 @@ pub(in crate::runtime_support::runtime_v3) fn adopted_runtime_owner() -> Adopted
     let owner = Arc::new(RuntimeGameInformationOwner {
         scope: scope.clone(),
         owner: reopened.clone(),
+        policy_clock: fixture.clock.clone(),
+        test_policy_clock: None,
+        test_adoption_barrier: std::sync::RwLock::new(()),
         corpus_store: Mutex::new(corpus_store),
         archive_store: Mutex::new(
             DurableMemoryStore::open(":memory:", scope, [11; 32]).expect("archive store"),
@@ -224,6 +227,9 @@ fn authenticated_loopback_preflight_requires_explicit_revalidation_approval_and_
     let owner = Arc::new(RuntimeGameInformationOwner {
         scope: scope.clone(),
         owner: reopened_owner,
+        policy_clock: fixture.clock.clone(),
+        test_policy_clock: None,
+        test_adoption_barrier: std::sync::RwLock::new(()),
         corpus_store: Mutex::new(corpus_store),
         archive_store: Mutex::new(
             DurableMemoryStore::open(":memory:", scope.clone(), [11; 32]).expect("archive store"),

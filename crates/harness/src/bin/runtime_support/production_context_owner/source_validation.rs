@@ -4,7 +4,7 @@ use super::*;
 use std::time::{SystemTime, UNIX_EPOCH};
 use sts2_harness::context_control::{ContextSourceDocument, context_source_digest};
 
-pub(super) fn validate_document(
+pub(in crate::runtime_support::production_context_owner) fn validate_document(
     document: &ContextSourceDocument,
 ) -> Result<String, ManagementError> {
     if document.draft.schema != sts2_harness::context_control::CONTEXT_DRAFT_SCHEMA
@@ -76,7 +76,9 @@ pub(super) fn validate_document(
         .map_err(|error| ManagementError::invalid("context_source_invalid", error.to_string()))
 }
 
-pub(super) fn source_valid_until(document: &ContextSourceDocument) -> u64 {
+pub(in crate::runtime_support::production_context_owner) fn source_valid_until(
+    document: &ContextSourceDocument,
+) -> u64 {
     document
         .draft
         .selected_items
@@ -101,7 +103,8 @@ pub(super) fn source_valid_until(document: &ContextSourceDocument) -> u64 {
         .unwrap_or(u64::MAX)
 }
 
-pub(super) fn unix_time() -> Result<u64, ManagementError> {
+pub(in crate::runtime_support::production_context_owner) fn unix_time()
+-> Result<u64, ManagementError> {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs())

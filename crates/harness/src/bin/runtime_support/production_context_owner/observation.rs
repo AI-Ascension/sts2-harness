@@ -77,6 +77,13 @@ impl LiveContextObservationPort for Owner {
                 .authority
                 .record_observation_boundary(boundary)
                 .map_err(|e| ManagementError::conflict("context_owner_observation_stale", e))?;
+            if entry
+                .trusted_render
+                .as_ref()
+                .is_some_and(|render| render.binding.boundary != entry.authority.state().boundary)
+            {
+                entry.trusted_render = None;
+            }
             entry
                 .store
                 .persist(&entry.authority, StoreMode::Enabled)
@@ -151,6 +158,7 @@ impl LiveContextObservationPort for Owner {
                 runtime_lease_id: binding.lease_id.clone(),
                 runtime_lease_epoch: binding.lease_epoch,
                 admitted_control_limits: control_limits.clone(),
+                trusted_render: None,
             },
         );
         Ok(())
@@ -206,6 +214,13 @@ impl LiveContextObservationPort for Owner {
             .authority
             .record_observation_boundary(boundary)
             .map_err(|error| ManagementError::conflict("context_owner_observation_stale", error))?;
+        if entry
+            .trusted_render
+            .as_ref()
+            .is_some_and(|render| render.binding.boundary != entry.authority.state().boundary)
+        {
+            entry.trusted_render = None;
+        }
         entry
             .store
             .persist(&entry.authority, StoreMode::Enabled)

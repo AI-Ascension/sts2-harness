@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: MIT
 use super::*;
+use serde_json::json;
 use sts2_harness::game_information::{
-    LookupError, LookupMcpContext, LookupMcpPort, call_lookup_mcp, call_capabilities_mcp,
+    LookupError, LookupMcpContext, LookupMcpPort, call_capabilities_mcp, call_lookup_mcp,
 };
 use sts2_harness::game_information_binding::{
     LookupBindingContext, LookupBindingError, LookupBindingPort, LookupBindingRequest,
     LookupBindingSession, LookupScope,
 };
-use serde_json::json;
 
 include!("runtime_v3_game_information_bootstrap.rs");
 include!("runtime_v3_game_information_mcp.rs");
@@ -162,10 +162,8 @@ impl RuntimeV3Port {
                 // available; live lookup stays refused until a host observation supplies one.
                 snapshot: None,
             };
-            let now = game_information_owner::RuntimeGameInformationOwner::policy_now_timestamp();
-            let expires_at = game_information_owner::RuntimeGameInformationOwner::policy_timestamp_after(
-                owner.archive_retention_seconds(),
-            );
+            let now = owner.policy_now_timestamp();
+            let expires_at = owner.policy_timestamp_after(owner.archive_retention_seconds());
             if owner.replay_archive() {
                 let (lookup_session, lookup_corpus) = owner
                     .restore_lookup_archive(&selected.binding, game_binding, &now, &expires_at)?
@@ -244,17 +242,15 @@ impl RuntimeV3Port {
         let observation_changed = previous_observation
             .as_ref()
             .zip(
-            self.lookup_binding
-                .as_ref()
-                .and_then(LookupBindingSession::observation),
-        )
-        .is_some_and(|(previous, current)| {
+                self.lookup_binding
+                    .as_ref()
+                    .and_then(LookupBindingSession::observation),
+            )
+            .is_some_and(|(previous, current)| {
                 previous.snapshot_id != current.snapshot_id
                     || previous.state_generation != current.state_generation
-        });
-        if observation_changed
-            && let Some(session) = self.lookup_session.as_mut()
-        {
+            });
+        if observation_changed && let Some(session) = self.lookup_session.as_mut() {
             session.invalidate_live_snapshot();
         }
         if observed_generation != generation {

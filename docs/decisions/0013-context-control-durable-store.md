@@ -27,12 +27,20 @@ closed. Outbox payloads contain bounded control events only; private note or cap
 written by this seam. Phase 1 snapshots are copied into an additive immutable table with a digest,
 so the historical bytes are retained and a conflicting identity cannot overwrite them.
 
-The schema is independently marked as `ascension.context-control.sqlite.v1`. Opening a database
-with the same marker repairs a partially applied additive table creation in one transaction;
-unknown or newer markers are rejected. A copied database can be backed up after a full WAL
-checkpoint. `legacy_open` refuses a management-active store and permits a disabled marker, so a
-legacy binary cannot silently ignore active management state. Disabling the marker does not delete
-the journal, revision, pause, or Phase 1 snapshots.
+The schema is independently marked as `ascension.context-control.sqlite.v1` or
+`ascension.context-control.sqlite.v2`. Opening a v1 database for an existing run authenticates
+that run's journal and encrypted source, lifetime, and receipt rows with the supplied run key
+inside the same immediate transaction that applies the additive v2 owner-state schema. A wrong key
+or corrupt target-run envelope rolls back without changing the marker, tables, or ciphertext. A
+nonempty v1 database opened for an absent run returns a migration-required refusal without writes;
+first open it through an existing run with that run's key, then create the new run. The database may
+hold runs with different keys: migration preserves other runs' encrypted rows byte-for-byte, but
+does not attest their keys or data; each run is authenticated when opened with its own key. Empty
+and metadata-only databases may initialize. Unknown or newer markers are rejected, and a partially
+applied additive table creation is repaired in one transaction. A copied database can be backed up
+after a full WAL checkpoint. `legacy_open` refuses a management-active store and permits a disabled
+marker, so a legacy binary cannot silently ignore active management state. Disabling the marker
+does not delete the journal, revision, pause, or Phase 1 snapshots.
 
 Recovery decrypts and replays the authoritative journal and increments the controller incarnation
 inside the recovered authority. Restart therefore does not auto-resume a paused or committed run;

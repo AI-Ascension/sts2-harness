@@ -44,6 +44,8 @@ impl RuntimeGameInformationOwner {
         bearer: Option<&str>,
         expected: Option<&ActivePolicyBinding>,
     ) -> Result<LookupPolicySnapshot, PolicyOwnerError> {
+        #[cfg(test)]
+        let _test_adoption_guard = self.test_adoption_read_guard()?;
         let snapshot = self.owner.lookup_snapshot(
             self.management_access(bearer, &self.selector_grant_id),
             expected,
@@ -63,6 +65,8 @@ impl RuntimeGameInformationOwner {
         &self,
         expected: Option<&ActivePolicyBinding>,
     ) -> Result<LookupPolicySnapshot, PolicyOwnerError> {
+        #[cfg(test)]
+        let _test_adoption_guard = self.test_adoption_read_guard()?;
         let store = self
             .corpus_store
             .lock()
@@ -81,6 +85,8 @@ impl RuntimeGameInformationOwner {
         &self,
         expected: &ActivePolicyBinding,
     ) -> Result<RuntimeLookupAuthorityGuard<'_>, PolicyOwnerError> {
+        #[cfg(test)]
+        let test_adoption_guard = self.test_adoption_read_guard()?;
         let corpus_store = self
             .corpus_store
             .lock()
@@ -96,6 +102,8 @@ impl RuntimeGameInformationOwner {
             // The policy journal and authority locks are released before the corpus lock.
             policy,
             _corpus_store: corpus_store,
+            #[cfg(test)]
+            _test_adoption_guard: test_adoption_guard,
         })
     }
 
@@ -122,6 +130,8 @@ impl RuntimeGameInformationOwner {
 pub(in crate::runtime_support::runtime_v3) struct RuntimeLookupAuthorityGuard<'a> {
     policy: LookupPolicyAuthorityGuard<'a>,
     _corpus_store: MutexGuard<'a, DurableMemoryStore>,
+    #[cfg(test)]
+    _test_adoption_guard: std::sync::RwLockReadGuard<'a, ()>,
 }
 
 impl RuntimeLookupAuthorityGuard<'_> {

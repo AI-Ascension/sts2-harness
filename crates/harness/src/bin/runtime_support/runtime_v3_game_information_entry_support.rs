@@ -4,28 +4,10 @@ use super::*;
 use serde_json::{Value, json};
 use std::net::SocketAddr;
 use std::os::unix::fs::PermissionsExt;
-use std::process::{Child, Command, Output};
+use std::process::Command;
 use std::time::{Duration, Instant};
 use sts2_harness::context_memory::policy_owner::SavedPolicyRef;
 use sts2_harness::management::ManagementClient;
-
-pub(super) fn finish_child(mut child: Child) -> Output {
-    let deadline = Instant::now() + Duration::from_secs(30);
-    loop {
-        if child.try_wait().expect("poll runtime process").is_some() {
-            return child.wait_with_output().expect("collect runtime output");
-        }
-        if Instant::now() >= deadline {
-            let _ = child.kill();
-            let output = child.wait_with_output().expect("collect timed-out child");
-            panic!(
-                "actual runtime entry exceeded its bounded test deadline:\n{}",
-                String::from_utf8_lossy(&output.stdout)
-            );
-        }
-        std::thread::sleep(Duration::from_millis(25));
-    }
-}
 
 pub(super) fn read_json_lines(path: &std::path::Path) -> Vec<Value> {
     std::fs::read_to_string(path)
@@ -103,7 +85,8 @@ pub(super) fn start_runtime_child(
     execution_path: &std::path::Path,
     branch_path: &std::path::Path,
     replay: bool,
-) -> Child {
+    entry_mode: EntryMode,
+) -> RuntimeChild {
     let args = vec![agent_script.to_string_lossy().to_string()];
     let args_json = serde_json::to_string(&args).expect("lookup process args");
     let mut command = match runtime_binary {
@@ -116,9 +99,17 @@ pub(super) fn start_runtime_child(
             .arg("--exact")
             .arg(CHILD_TEST)
             .arg("--nocapture")
-            .env("STS2_LOOKUP_ENTRY_CHILD", "true");
+            .env("STS2_LOOKUP_ENTRY_CHILD", "true")
+            .env(
+                "STS2_TEST_LOOKUP_POLICY_CLOCK",
+                if entry_mode.rollback_after_adoption() {
+                    "rollback-after-adoption"
+                } else {
+                    "fixed-100"
+                },
+            );
     }
-    command
+    let child = command
         .env("STS2_RUNTIME_PROFILE", "negotiated-composition-v1")
         .env("STS2_LIVE_EPISODE", "true")
         .env("STS2_ENABLE_GAME_INFORMATION_LOOKUP_BINDING", "true")
@@ -173,8 +164,11 @@ pub(super) fn start_runtime_child(
                 "entry-attempt-first"
             },
         )
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
         .spawn()
-        .expect("start isolated actual runtime test process")
+        .expect("start isolated actual runtime test process");
+    RuntimeChild::new(child).expect("start bounded runtime child output pump")
 }
 
 pub(super) fn wait_for_management(address: SocketAddr) -> ManagementClient {

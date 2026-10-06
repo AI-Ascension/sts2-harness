@@ -111,12 +111,14 @@ impl ManagementService {
         })?;
         let catalog = self.context_owner.catalog(actor)?;
         catalog.validate()?;
-        if !catalog
+        let is_catalog_source = catalog
             .descriptors
             .iter()
             .flat_map(|descriptor| descriptor.sources.iter())
-            .any(|source| source.source_id == source_id)
-        {
+            .any(|source| source.source_id == source_id);
+        // The owner resolves this reserved run-local namespace from its encrypted publication
+        // index. It is intentionally never inserted into the immutable catalog descriptor.
+        if !is_catalog_source && !source_id.starts_with("ownerpub.") {
             return Err(ManagementError::capability(
                 "context_source_not_advertised",
                 "source identity is not advertised by this owner",

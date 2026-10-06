@@ -3,21 +3,21 @@
 pub(super) fn run(
     mut config: RuntimeConfig,
     selector: Option<sts2_harness::BranchContinuationSelector>,
+    policy_clock_source: PolicyClockSource,
 ) -> Result<(), String> {
     let runtime_profile = config.runtime_profile.clone();
     let resume_requested = std::env::args()
         .skip(1)
         .any(|argument| argument == "--resume")
         || std::env::var("STS2_RESUME").as_deref() == Ok("true");
-    let mut selected_branch =
-        select_branch_continuation(selector, resume_requested, &mut config)?;
+    let mut selected_branch = select_branch_continuation(selector, resume_requested, &mut config)?;
     let policy_preflight = if selected_branch
         .as_ref()
         .is_some_and(|selected| selected.is_exact_restore())
     {
         None
     } else {
-        game_information_owner::begin_memory_policy_preflight(&config)?
+        game_information_owner::begin_memory_policy_preflight(&config, policy_clock_source)?
     };
     let settings = RuntimeV3Settings::from_environment(&config)?;
     let telemetry_context = TelemetryContext::new(TelemetryContextInput {
@@ -114,28 +114,27 @@ pub(super) fn run(
         finish_telemetry(telemetry);
         return Err(error);
     }
-    let mut port =
-        match RuntimeV3Port::new_with_store_and_lookup_owner(
-            config.clone(),
-            telemetry_handle.clone(),
-            durable,
-            policy_preflight
-                .as_ref()
-                .map(|preflight| std::sync::Arc::clone(&preflight.owner)),
-        ) {
-            Ok(port) => port,
-            Err(error) => {
-                let _ = telemetry_handle.failure(
-                    "runtime_init",
-                    super::runtime_v3_telemetry::FailureCode::Configuration,
-                    false,
-                    None,
-                );
-                let _ = recording::flush_replay_stream();
-                finish_telemetry(telemetry);
-                return Err(error);
-            }
-        };
+    let mut port = match RuntimeV3Port::new_with_store_and_lookup_owner(
+        config.clone(),
+        telemetry_handle.clone(),
+        durable,
+        policy_preflight
+            .as_ref()
+            .map(|preflight| std::sync::Arc::clone(&preflight.owner)),
+    ) {
+        Ok(port) => port,
+        Err(error) => {
+            let _ = telemetry_handle.failure(
+                "runtime_init",
+                super::runtime_v3_telemetry::FailureCode::Configuration,
+                false,
+                None,
+            );
+            let _ = recording::flush_replay_stream();
+            finish_telemetry(telemetry);
+            return Err(error);
+        }
+    };
     if let Some(selected) = selected_branch.take() {
         return branch_continuation::run(selected, port, settings, telemetry_handle, telemetry);
     }
