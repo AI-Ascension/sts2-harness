@@ -118,11 +118,11 @@ fn store_error(error: sts2_harness::context_control::DurableControlStoreError) -
     }
 }
 
-fn owner_lock_error() -> ManagementError {
+pub(super) fn owner_lock_error() -> ManagementError {
     ManagementError::unavailable("context_owner_lock", "context owner is unavailable")
 }
 
-fn owner_unavailable() -> ManagementError {
+pub(super) fn owner_unavailable() -> ManagementError {
     ManagementError::unavailable(
         "context_owner_draft_unavailable",
         "current owner observation is unavailable",

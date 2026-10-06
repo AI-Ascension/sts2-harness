@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+use super::source::{unix_time, validate_document};
 use super::*;
 use sts2_harness::context_control::{
     DurableActiveContextSource, DurableContextOwnerPublication, DurableContextSourceSnapshot,

@@ -62,11 +62,11 @@ impl Owner {
         let (base_source, retention_expires_at, now) =
             if let Some((active, snapshot)) = active_source {
                 let (document, valid_until, now) =
-                    if super::super::publication_active::is_publication_source(&active.source_id) {
+                    if super::publication_active::is_publication_source(&active.source_id) {
                         let now = clock()?;
                         let (publication, source) =
                             self.load_active_publication(entry, &actor.subject, &active, now)?;
-                        if !super::super::publication_active::publication_binding_matches(
+                        if !super::publication_active::publication_binding_matches(
                             &publication.receipt.binding,
                             &binding,
                         ) {

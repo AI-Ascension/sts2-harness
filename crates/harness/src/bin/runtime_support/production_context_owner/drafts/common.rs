@@ -117,7 +117,7 @@ impl Owner {
                 &identity,
                 now,
             )?;
-            if !super::super::publication_active::publication_binding_matches(
+            if !super::publication_active::publication_binding_matches(
                 &publication.receipt.binding,
                 &record.envelope.binding,
             ) {
