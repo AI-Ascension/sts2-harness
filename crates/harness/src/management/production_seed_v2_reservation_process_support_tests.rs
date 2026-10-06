@@ -45,7 +45,7 @@ impl OwnedChild {
         Ok(Self {
             process_id: child.id(),
             child: Some(child),
-        });
+        })
     }
 
     pub(super) fn finish(mut self) -> Result<ChildOutput, String> {

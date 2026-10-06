@@ -6,7 +6,6 @@
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -146,8 +145,8 @@ fn independent_process_reservation_arbitration_converges_across_key_rotation() {
             .iter()
             .all(|version| version == winner_version)
     );
-    assert_eq!(
-        first.response.seed_binding, second.response.seed_binding,
+    assert!(
+        first.response.seed_binding == second.response.seed_binding,
         "both independent processes must return the committed winner's binding"
     );
     assert_eq!(
@@ -369,6 +368,6 @@ impl SeedDerivationKeyAuthority for BarrierKeyAuthority {
 #[path = "production_seed_v2_reservation_process_support_tests.rs"]
 mod process_support;
 use process_support::{
-    ChildOutput, OwnedChild, assert_child_success, read_report, required_env, row_count,
-    set_private_directory, wait_for_files,
+    OwnedChild, assert_child_success, read_report, required_env, row_count, set_private_directory,
+    wait_for_files,
 };

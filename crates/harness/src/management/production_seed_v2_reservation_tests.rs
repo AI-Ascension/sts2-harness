@@ -4,7 +4,6 @@
 
 use std::sync::Arc;
 
-use super::super::Counters;
 use super::super::seed_v2_support::{
     CountingAuthority, PrivateDirectory, client, derive_once_request, open_store, request_bytes,
     runtime_counts, start_live_server,

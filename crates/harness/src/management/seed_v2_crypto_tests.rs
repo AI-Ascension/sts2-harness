@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
+use crate::management::AuthContext;
 use crate::management::contract::{
     ExecutionMode, RunTargetConfiguration, TARGET_ADMISSION_SCHEMA_VERSION,
 };
