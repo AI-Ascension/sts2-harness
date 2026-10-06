@@ -38,6 +38,7 @@ pub(super) fn serve() -> Result<(), String> {
         production_context_owner::Configuration::from_environment()?,
     )?);
     let owner = Arc::new(policy.open_owner()?);
+    let seed_key_authority = seed_keys::authority_from_environment()?;
     let provider_policy: Arc<dyn LiveProviderPolicyPort> =
         Arc::new(ProviderSessionPolicyOwnerPort::new(Arc::clone(&owner)));
     let command_port: Arc<dyn ProviderSessionPolicyCommandPort> = Arc::new(
@@ -46,7 +47,17 @@ pub(super) fn serve() -> Result<(), String> {
     // The served effective-limits record is built from the same descriptor the
     // session factory admits provider sessions against.
     let served_capabilities = policy.capabilities.clone();
-    sts2_harness::management::serve_live_with_lifecycle(
+    let mut owner_services = sts2_harness::management::ServedOwnerServices::new(
+        sts2_harness::management::ServedOwnerPorts {
+            provider_policy: Arc::clone(&provider_policy),
+            command_port: Arc::clone(&command_port),
+            context_owner: context_owner.clone(),
+        },
+    );
+    if let Some(authority) = seed_key_authority {
+        owner_services = owner_services.with_seed_derivation_keys(authority);
+    }
+    sts2_harness::management::serve_live_with_lifecycle_and_owner_services(
         listen,
         &store,
         authenticator,
@@ -56,11 +67,7 @@ pub(super) fn serve() -> Result<(), String> {
             policy.capabilities,
             Arc::clone(&context_owner),
         )?,
-        sts2_harness::management::ServedOwnerPorts {
-            provider_policy,
-            command_port,
-            context_owner,
-        },
+        owner_services,
         served_capabilities,
         lifecycle_owner::owner()?,
     )
@@ -123,6 +130,9 @@ fn factory(
 mod capture;
 #[path = "workflow_service_dispatch_ledger.rs"]
 mod dispatch_ledger;
+
+#[path = "workflow_service_seed.rs"]
+mod seed_keys;
 
 #[path = "workflow_service_inference_profiles.rs"]
 mod inference_profiles;

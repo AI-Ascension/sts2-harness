@@ -8,6 +8,7 @@ use super::contract::{
     CommandRequest, CommandResponse, EventPage, ExportResponse, MANAGEMENT_SCHEMA_VERSION,
     MAX_STORE_BYTES, PendingOperation, PersistedStore, RunEvent, RunSnapshot,
 };
+use super::contract_seed_v2::{StoredSeedBindingV2, StoredSeedOperationV2};
 
 #[path = "store_file.rs"]
 mod file;
@@ -50,6 +51,56 @@ pub enum SubmissionLookup {
     Conflict,
 }
 
+pub enum SeedBindingLookup {
+    Missing,
+    Existing(Box<SeedBindingRecord>),
+    Conflict,
+}
+
+pub enum SeedOperationLookup {
+    Missing,
+    Prepared(Box<SeedOperationRecord>),
+    CandidatePersisted(Box<SeedBindingRecord>),
+    Conflict,
+}
+
+/// Opaque persisted key-selection record. It contains only public key
+/// identity/commitment metadata, never key material or the derived seed.
+#[derive(Clone)]
+pub struct SeedOperationRecord(StoredSeedOperationV2);
+
+impl SeedOperationRecord {
+    pub(crate) fn new(record: StoredSeedOperationV2) -> Self {
+        Self(record)
+    }
+
+    pub(crate) fn record(&self) -> &StoredSeedOperationV2 {
+        &self.0
+    }
+
+    pub(crate) fn into_record(self) -> StoredSeedOperationV2 {
+        self.0
+    }
+}
+
+/// Opaque store-owned seed material. Its public wrapper can cross the store
+/// trait without exposing serialization, debug formatting, or record fields.
+pub struct SeedBindingRecord(StoredSeedBindingV2);
+
+impl SeedBindingRecord {
+    pub(crate) fn new(record: StoredSeedBindingV2) -> Self {
+        Self(record)
+    }
+
+    pub(crate) fn record(&self) -> &StoredSeedBindingV2 {
+        &self.0
+    }
+
+    pub(crate) fn into_record(self) -> StoredSeedBindingV2 {
+        self.0
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CommandAcceptance {
     New {
@@ -72,6 +123,92 @@ pub struct CommandApplication {
 }
 
 pub trait WorkflowStore: Send + Sync {
+    /// Whether this backend can atomically reserve seed candidates with their
+    /// initial workflow run and durable submission identity.
+    fn supports_durable_seed_bindings(&self) -> bool {
+        false
+    }
+
+    /// Whether this backend can durably arbitrate an immutable key identity
+    /// before a derive-once operation calculates its effective seed.
+    fn supports_seed_operation_reservations(&self) -> bool {
+        false
+    }
+
+    fn lookup_seed_operation(
+        &self,
+        _request_id: &str,
+        _actor_digest: &str,
+        _request_digest: &str,
+    ) -> Result<SeedOperationLookup, StoreError> {
+        Err(StoreError::new(
+            "seed_operation_unavailable",
+            "workflow store does not support durable seed operation reservations",
+        ))
+    }
+
+    /// Insert or return the immutable winner. Implementations must compare
+    /// actor/request/run/op/admission identity, but a losing provisional key
+    /// identity is intentionally ignored in favor of the stored winner.
+    fn reserve_seed_operation(
+        &self,
+        _proposed: SeedOperationRecord,
+    ) -> Result<SeedOperationLookup, StoreError> {
+        Err(StoreError::new(
+            "seed_operation_unavailable",
+            "workflow store does not support durable seed operation reservations",
+        ))
+    }
+
+    fn lookup_seed_binding(
+        &self,
+        _request_id: &str,
+        _actor_digest: &str,
+        _request_digest: &str,
+    ) -> Result<SeedBindingLookup, StoreError> {
+        Err(StoreError::new(
+            "seed_binding_unavailable",
+            "workflow store does not support durable seed bindings",
+        ))
+    }
+
+    fn create_seeded_run(
+        &self,
+        _request_id: &str,
+        _request_digest: &str,
+        _snapshot: RunSnapshot,
+        _initial_events: Vec<RunEvent>,
+        _operation: Option<SeedOperationRecord>,
+        _seed_binding: SeedBindingRecord,
+    ) -> Result<(), StoreError> {
+        Err(StoreError::new(
+            "seed_binding_unavailable",
+            "workflow store does not support durable seed bindings",
+        ))
+    }
+
+    fn read_seed_binding(
+        &self,
+        _workflow_run_id: &str,
+    ) -> Result<Option<SeedBindingRecord>, StoreError> {
+        Err(StoreError::new(
+            "seed_binding_unavailable",
+            "workflow store does not support durable seed bindings",
+        ))
+    }
+
+    fn mark_seed_binding_awaiting_host_context(
+        &self,
+        _workflow_run_id: &str,
+        _actor_digest: &str,
+        _request_digest: &str,
+    ) -> Result<SeedBindingRecord, StoreError> {
+        Err(StoreError::new(
+            "seed_binding_unavailable",
+            "workflow store does not support durable seed bindings",
+        ))
+    }
+
     /// Whether this store atomically retains bounded context metadata with a
     /// command result. Unsupported stores cannot enable the opt-in service.
     fn supports_context_binding_history(&self) -> bool {

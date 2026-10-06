@@ -66,6 +66,10 @@ mod provider_policy_ops;
 mod provider_session_support;
 #[path = "service_read.rs"]
 mod read;
+#[path = "service_seed_v2.rs"]
+mod seed_v2;
+#[path = "service_seed_v2_support.rs"]
+mod seed_v2_support;
 #[path = "service_submission.rs"]
 mod submission;
 #[path = "service_support.rs"]
@@ -272,6 +276,7 @@ pub struct ManagementService {
     live_provider_policy: Arc<dyn LiveProviderPolicyPort>,
     memory_policy_owner: Arc<dyn MemoryPolicyOwnerManagementPort>,
     provider_session_capabilities: Option<crate::provider_session::NativeCapabilities>,
+    seed_derivation_keys: Option<Arc<dyn super::SeedDerivationKeyAuthority>>,
     process_lifecycle: Arc<dyn super::lifecycle::ProcessLifecyclePort>,
     lifecycle_intents: Option<Arc<std::sync::Mutex<super::lifecycle_intent::LifecycleIntentStore>>>,
     journal: Arc<dyn InferenceProfileRevisionJournal>,
@@ -302,6 +307,7 @@ impl ManagementService {
                 memory_policy_owner_ops::UnavailableMemoryPolicyOwnerManagementPort,
             ),
             provider_session_capabilities: None,
+            seed_derivation_keys: None,
             process_lifecycle: Arc::new(super::lifecycle::UnavailableProcessLifecyclePort),
             lifecycle_intents: None,
             journal: Arc::new(UnavailableInferenceProfileRevisionJournal),
@@ -313,6 +319,20 @@ impl ManagementService {
     pub fn with_execution_port(mut self, port: Arc<dyn WorkflowExecutionPort>) -> Self {
         self.execution = port;
         self
+    }
+
+    /// Attaches an immutable, service-only versioned seed key authority. A
+    /// missing authority leaves v2 derive-once requests typed unavailable.
+    pub fn with_seed_derivation_key_authority(
+        mut self,
+        authority: Arc<dyn super::SeedDerivationKeyAuthority>,
+    ) -> Self {
+        self.seed_derivation_keys = Some(authority);
+        self
+    }
+
+    pub(super) fn seed_derivation_keys(&self) -> Option<&dyn super::SeedDerivationKeyAuthority> {
+        self.seed_derivation_keys.as_deref()
     }
 
     pub fn with_replay_port(mut self, port: Arc<dyn WorkflowReplayPort>) -> Self {

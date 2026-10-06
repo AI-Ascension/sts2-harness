@@ -100,7 +100,36 @@ impl WorkflowExecutionPort for LiveWorkflowExecutionPort {
                 "execution admission does not match the submitted request",
             ));
         }
-        self.submit_inner(request, actor, definition_digest, reserve)
+        self.submit_inner(request, actor, definition_digest, reserve, false)
+    }
+
+    fn prepare_seed_candidate_with_reservation(
+        &self,
+        request: &RunRequest,
+        actor: &AuthContext,
+        definition_digest: &str,
+        admission: Option<&TargetAdmissionBinding>,
+        reserve: &RunReservation,
+    ) -> Result<RunAdmission, ManagementError> {
+        let admission = admission.ok_or_else(|| {
+            ManagementError::conflict(
+                "target_admission_required",
+                "live seed candidate requires an exact target admission binding",
+            )
+        })?;
+        if !reserve.is_seed_candidate() {
+            return Err(ManagementError::conflict(
+                "seed_candidate_reservation_missing",
+                "seed candidate path requires its service-owned seed reservation",
+            ));
+        }
+        if request.admission.as_ref() != Some(admission) {
+            return Err(ManagementError::conflict(
+                "target_admission_mismatch",
+                "execution admission does not match the submitted request",
+            ));
+        }
+        self.submit_inner(request, actor, definition_digest, reserve, true)
     }
 
     fn apply_command(
@@ -141,6 +170,7 @@ impl LiveWorkflowExecutionPort {
         actor: &AuthContext,
         definition_digest: &str,
         reserve: &RunReservation,
+        prepare_seed_candidate: bool,
     ) -> Result<RunAdmission, ManagementError> {
         let admission = request.admission.as_ref().ok_or_else(|| {
             ManagementError::conflict(
@@ -225,7 +255,11 @@ impl LiveWorkflowExecutionPort {
             payload: EventPayload {
                 operation_id: None,
                 classification: Some(EventClassification::Accepted),
-                reason_code: "live_admitted".to_owned(),
+                reason_code: if prepare_seed_candidate {
+                    "seed_candidate_awaiting_host_context".to_owned()
+                } else {
+                    "live_admitted".to_owned()
+                },
             },
             integrity_digest: None,
         };
@@ -241,6 +275,9 @@ impl LiveWorkflowExecutionPort {
             request,
             admission,
         )?;
+        if prepare_seed_candidate {
+            return Ok(admission_result);
+        }
         let mut session = self.factory.open_admitted(
             request,
             actor,

@@ -18,6 +18,7 @@ pub use context_binding_history::{
 mod contract;
 mod contract_authoring;
 mod contract_authoring_inference;
+mod contract_seed_v2;
 mod http;
 mod inference_profile_binding;
 pub use inference_profile_binding::{
@@ -45,6 +46,8 @@ mod provider_policy;
 mod provider_session_inspection;
 mod readiness_wait;
 mod save_profile_setup;
+mod seed_key;
+mod seed_v2_crypto;
 mod service;
 mod store;
 mod synthetic_context_owner;
@@ -125,6 +128,12 @@ pub use contract_authoring::{
     StudioPublishResponse, StudioSaveDraftRequest,
 };
 pub use contract_authoring_inference::*;
+pub use contract_seed_v2::{
+    SeedBindingReadbackV2, SeedBindingStateV2, SeedModeV2, SeedRequestV2,
+    SeededRunSubmissionResponseV2, WORKFLOW_RUN_REQUEST_V2_SCHEMA,
+    WORKFLOW_RUN_SUBMISSION_V2_SCHEMA, WORKFLOW_SEED_BINDING_V2_SCHEMA,
+    WORKFLOW_SEED_REQUEST_V2_SCHEMA, WorkflowRunRequestV2,
+};
 pub use http::{
     ClientResponse, HttpError, HttpLimits, ManagementClient, ManagementFailurePort,
     ManagementFailureSink, ManagementServer, ServerConfig, ServerHandle,
@@ -174,6 +183,10 @@ pub use save_profile_setup::{
     ProfileSetupRequest, VerifiedProfileReadback, admit_profile_setup, is_instance_identity,
     is_profile_identity,
 };
+pub use seed_key::{
+    FileSeedDerivationKeyAuthority, SeedDerivationKeyAuthority, SeedKeyError, SeedKeyHandle,
+    SeedKeyIdentity,
+};
 pub use service::{
     CapabilityPort, CommandApplication, CommandContext, ContextInspectionPort,
     ContextInspectionResult, DefinitionPort, DiffResult, InspectionResult, LiveProviderPolicyPort,
@@ -187,7 +200,8 @@ pub use service::{
 };
 pub use store::{
     CommandAcceptance, CommandApplication as StoreCommandApplication, FileWorkflowStore,
-    MemoryWorkflowStore, SqliteWorkflowStore, StoreError, SubmissionLookup, WorkflowStore,
+    MemoryWorkflowStore, SeedBindingLookup, SeedBindingRecord, SeedOperationLookup,
+    SeedOperationRecord, SqliteWorkflowStore, StoreError, SubmissionLookup, WorkflowStore,
 };
 pub use workflow_ports::{synthetic_file_store, synthetic_sqlite_store, synthetic_store};
 
@@ -263,6 +277,30 @@ pub struct ServedOwnerPorts {
     pub context_owner: std::sync::Arc<dyn ContextOwnerPort>,
 }
 
+/// Optional long-lived management-only services attached by the binary that
+/// owns their protected configuration.
+pub struct ServedOwnerServices {
+    ports: ServedOwnerPorts,
+    seed_derivation_keys: Option<std::sync::Arc<dyn SeedDerivationKeyAuthority>>,
+}
+
+impl ServedOwnerServices {
+    pub fn new(ports: ServedOwnerPorts) -> Self {
+        Self {
+            ports,
+            seed_derivation_keys: None,
+        }
+    }
+
+    pub fn with_seed_derivation_keys(
+        mut self,
+        authority: std::sync::Arc<dyn SeedDerivationKeyAuthority>,
+    ) -> Self {
+        self.seed_derivation_keys = Some(authority);
+        self
+    }
+}
+
 /// Starts served-live management with shared durable provider-policy owner
 /// ports, explicit saved-policy commands, and an attached context owner.
 pub fn serve_live_with_provider_policy_commands_and_context_owner(
@@ -300,6 +338,28 @@ pub fn serve_live_with_lifecycle(
     provider_session_capabilities: crate::provider_session::NativeCapabilities,
     lifecycle: Option<ProcessLifecycleOwner>,
 ) -> Result<(), ManagementError> {
+    serve_live_with_lifecycle_and_owner_services(
+        listen,
+        store_path,
+        authenticator,
+        factory,
+        ServedOwnerServices::new(owner),
+        provider_session_capabilities,
+        lifecycle,
+    )
+}
+
+/// Starts served-live management with explicitly composed owner-local
+/// services, including the optional immutable seed-key authority.
+pub fn serve_live_with_lifecycle_and_owner_services(
+    listen: std::net::SocketAddr,
+    store_path: &str,
+    authenticator: std::sync::Arc<dyn Authenticator>,
+    factory: std::sync::Arc<dyn LiveWorkflowSessionFactory>,
+    owner: ServedOwnerServices,
+    provider_session_capabilities: crate::provider_session::NativeCapabilities,
+    lifecycle: Option<ProcessLifecycleOwner>,
+) -> Result<(), ManagementError> {
     let store = std::sync::Arc::new(
         SqliteWorkflowStore::open(store_path)
             .map_err(|error| ManagementError::store("workflow_store_open", error.to_string()))?,
@@ -308,17 +368,22 @@ pub fn serve_live_with_lifecycle(
         SqliteInferenceProfileRevisionJournal::new(std::sync::Arc::clone(&store)),
     );
     let store: std::sync::Arc<dyn WorkflowStore> = store;
+    let seed_derivation_keys = owner.seed_derivation_keys;
     let service = live_store_with_provider_policy_and_command_port(
         store,
         factory,
         LiveWorkflowOptions::default(),
-        owner.provider_policy,
-        owner.command_port,
+        owner.ports.provider_policy,
+        owner.ports.command_port,
     )?
     .with_inference_profile_revision_journal(journal)
-    .with_context_owner_port(owner.context_owner)
+    .with_context_owner_port(owner.ports.context_owner)
     .with_context_binding_history()?
     .with_provider_session_capabilities(provider_session_capabilities)?;
+    let service = match seed_derivation_keys {
+        Some(authority) => service.with_seed_derivation_key_authority(authority),
+        None => service,
+    };
     let service = match lifecycle {
         Some((port, intents)) => service.with_process_lifecycle(port, intents),
         None => service,
