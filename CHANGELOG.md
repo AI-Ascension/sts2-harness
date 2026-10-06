@@ -19,10 +19,10 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
 
 - **The pinned Exo process oracle refuses explicit old-history input before model egress and covers the existing synthetic v2 mode.** It requires the unsupported history field containing `old-history-private-sentinel` to receive `exo_bridge_invalid_request` with zero loopback model requests. The v2 case checks the decision, receipt identities, and exact full-body model projection through the shipped bridge and pinned Exo process. The model and host remain synthetic; this is not live-provider or native continuity evidence. Refs #109.
 
-- **The Context Console owner contract is recorded for review.** ADR 0080 maps eligible items,
-  draft/revision/preview records, independent content/edit/objective grants, exact receipt recovery
-  and the still-unavailable ADR 0021 sidecar trust join. This is a documentation-only T1 decision;
-  no route or process acceptance is delivered. Refs #391, Console #18.
+- **Harness implements the context-owner T2 routes in source.** ADR 0080 preserves the 2026-10-04 T1 decision and records durable eligible-item, draft/revision, preview, mutation-receipt, and draft-publication operations on schema 3.
+  Console #48 adds trusted subject-bound grant ingress (`461bd9b`); the production outbound owner adapter and encrypted durable exact-request mutation intent remain pending.
+  Separate-process Console R3 response/recovery and the independent ADR 0021 sidecar trust join remain pending; this records source status, not acceptance.
+  Refs #391, Console #18; native, provider, deployment, and production-host evidence remain separate.
 
 - **The tautological default-sink probe is deleted.** `the_default_sink_reports_rather_than_discards`
   asserted a hard-coded `true`; a mutation that made `StderrFailurePort::report` a no-op still left

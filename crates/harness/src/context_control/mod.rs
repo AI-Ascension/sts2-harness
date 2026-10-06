@@ -114,9 +114,11 @@ pub use state::{
 pub use store::ContextControlStore;
 pub use store_render_sources::context_source_digest;
 pub use store_types::{
-    CURRENT_CONTEXT_CONTROL_SCHEMA_VERSION, DurableActiveContextSource,
-    DurableContextOwnerControlReceipt, DurableContextSourceSnapshot, DurableControlStoreError,
-    DurableStoreFailpoint, LegacyOpenError, StoreMode, StoreSnapshot,
+    CURRENT_CONTEXT_CONTROL_SCHEMA_VERSION, DurableActiveContextPublicationLink,
+    DurableActiveContextSource, DurableContextOwnerControlReceipt, DurableContextOwnerPublication,
+    DurableContextOwnerPublicationWrite, DurableContextSourceSnapshot, DurableControlStoreError,
+    DurableOwnerContextState, DurableStoreFailpoint, LegacyOpenError,
+    MAX_OWNER_CONTEXT_STATE_BYTES, StoreMode, StoreSnapshot,
 };
 pub use systemone_card_choice::{
     DisclosedCardChoice, card_choice_instructions, disclosed_card_choice,
@@ -134,5 +136,5 @@ pub use systemone_request::{
 pub use types::{
     ActiveContextSource, CONTEXT_DRAFT_SCHEMA, ContextBoundary, ContextDraft, ContextItem,
     ContextItemRef, ContextNote, ContextSourceActivation, ContextSourceDocument, MAX_CONTEXT_BYTES,
-    MAX_CONTEXT_ITEMS, MAX_CONTEXT_NOTES, MAX_OBJECTIVE_BYTES, ManagementProfile,
+    MAX_CONTEXT_ITEMS, MAX_CONTEXT_NOTES, MAX_NOTE_BYTES, MAX_OBJECTIVE_BYTES, ManagementProfile,
 };

@@ -6,6 +6,7 @@ use crate::context_capture::{
     DurableDispatchLedger, MAX_CAPTURE_BYTES, MAX_CAPTURE_RECORDS, MemoryCapture, NoopCapture,
     NoopDispatchLedgerPort,
 };
+use crate::exo::ExoConfig;
 use crate::management::{
     ContextOwnerControlLimits, ContextRenderSource, ContextRenderSourceIdentity,
 };
@@ -51,6 +52,32 @@ pub trait LiveContextRenderPort: Send + Sync {
         input: &DecisionInput,
         context_ref: &str,
     ) -> Result<ContextRenderSource, ManagementError>;
+
+    /// Supplies the exact admitted provider configuration alongside trusted
+    /// runtime input so an owner can retain a bounded preview snapshot. Legacy
+    /// render ports delegate to their existing source resolver.
+    #[allow(clippy::too_many_arguments)]
+    fn render_source_for_decision_with_config(
+        &self,
+        actor: &AuthContext,
+        request: &RunRequest,
+        definition_digest: &str,
+        binding: &RuntimeAuthorityBinding,
+        control_limits: &ContextOwnerControlLimits,
+        input: &DecisionInput,
+        context_ref: &str,
+        _config: &ExoConfig,
+    ) -> Result<ContextRenderSource, ManagementError> {
+        self.render_source_for_decision(
+            actor,
+            request,
+            definition_digest,
+            binding,
+            control_limits,
+            input,
+            context_ref,
+        )
+    }
 
     #[allow(clippy::too_many_arguments)]
     fn assert_render_source_current(

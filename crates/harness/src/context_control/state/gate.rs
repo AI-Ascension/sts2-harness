@@ -99,9 +99,13 @@ impl ControlAuthority {
         source_version: u64,
         source_digest: &str,
     ) -> Result<ControlReceipt, String> {
-        let payload = format!(
-            "{expected_control_version}|{expected_revision_id}|{source_id}|{source_version}|{source_digest}|{}",
-            serde_json::to_string(expected_boundary).unwrap_or_default()
+        let payload = source_adoption_payload(
+            expected_control_version,
+            expected_revision_id,
+            expected_boundary,
+            source_id,
+            source_version,
+            source_digest,
         );
         if let Some(receipt) = self.idempotent(idempotency_key, "source_adopt", &payload)? {
             return Ok(receipt);
@@ -145,6 +149,33 @@ impl ControlAuthority {
         Ok(receipt)
     }
 
+    /// Looks up the historical source-aware receipt without changing authority state.
+    ///
+    /// Publication adoption also writes an outer owner-control receipt using the public Commit
+    /// command shape. Callers use this read-only lookup to verify that an exact outer replay is
+    /// backed by the inner source identity that originally authorized the transition.
+    #[allow(clippy::too_many_arguments)]
+    pub fn lookup_source_adoption_receipt(
+        &self,
+        idempotency_key: &str,
+        expected_control_version: u64,
+        expected_revision_id: &str,
+        expected_boundary: &ContextBoundary,
+        source_id: &str,
+        source_version: u64,
+        source_digest: &str,
+    ) -> Result<Option<ControlReceipt>, String> {
+        let payload = source_adoption_payload(
+            expected_control_version,
+            expected_revision_id,
+            expected_boundary,
+            source_id,
+            source_version,
+            source_digest,
+        );
+        self.idempotent(idempotency_key, "source_adopt", &payload)
+    }
+
     pub fn resume(
         &mut self,
         idempotency_key: &str,
@@ -178,4 +209,18 @@ impl ControlAuthority {
         self.event("resume.accepted", Some(&receipt.command_id), None)?;
         Ok(receipt)
     }
+}
+
+fn source_adoption_payload(
+    expected_control_version: u64,
+    expected_revision_id: &str,
+    expected_boundary: &ContextBoundary,
+    source_id: &str,
+    source_version: u64,
+    source_digest: &str,
+) -> String {
+    format!(
+        "{expected_control_version}|{expected_revision_id}|{source_id}|{source_version}|{source_digest}|{}",
+        serde_json::to_string(expected_boundary).unwrap_or_default()
+    )
 }
