@@ -14,6 +14,7 @@ use crate::provider_session::owner_journal::inject_terminal_process_barrier;
 use crate::{ExecutionStore, ProviderReservationState};
 use std::fs::{self, OpenOptions};
 use std::io::Read;
+use std::os::unix::fs::DirBuilderExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -111,8 +112,13 @@ fn child_process_stops_at_requested_crash_cut() {
         _ => panic!("unknown process crash cut"),
     };
     let root = PathBuf::from(std::env::var_os(ROOT_ENV).expect("private fixture root"));
-    let mut fixture = open_existing_fixture(root.clone());
-    let mut owner = fixture.reopen().expect("open owner in child process");
+    let mut fixture = Fixture::new_at(root.clone());
+    write_once(
+        &root.join("manifest.json"),
+        &serde_json::to_vec(&fixture.manifest).expect("manifest bytes"),
+    );
+    write_once(&root.join("input.bin"), &fixture.input);
+    let mut owner = fixture.owner();
     let mut effect = PersistentEffect::new(&root);
     let outcome = owner
         .start(
@@ -147,20 +153,11 @@ fn child_process_stops_at_requested_crash_cut() {
 
 fn run_process_cut(cut: CrashCut) {
     let mut private_root = PrivateRoot::new();
-    let mut setup = Fixture::new_at(private_root.path.clone());
-    write_once(
-        &private_root.path.join("manifest.json"),
-        &serde_json::to_vec(&setup.manifest).expect("manifest bytes"),
-    );
-    write_once(&private_root.path.join("input.bin"), &setup.input);
-    drop(setup.owner());
-    drop(setup);
-
-    let mut child = OwnedChild::spawn(&private_root.path, cut);
-    child.wait_for_marker(cut.marker_path(&private_root.path), cut.marker_text());
-    assert_sent_journal_unchanged(&private_root.path);
-    assert_one_effect_attempt(&private_root.path);
-    assert_response_was_delivered(&private_root.path);
+    let mut child = OwnedChild::spawn(&private_root.path, &private_root.state, cut);
+    child.wait_for_marker(cut.marker_path(&private_root.state), cut.marker_text());
+    assert_sent_journal_unchanged(&private_root.state);
+    assert_one_effect_attempt(&private_root.state);
+    assert_response_was_delivered(&private_root.state);
     let status = child.kill_and_reap();
     use std::os::unix::process::ExitStatusExt;
     assert_eq!(
@@ -170,7 +167,7 @@ fn run_process_cut(cut: CrashCut) {
     );
     child.assert_captured_output();
 
-    let mut fixture = open_existing_fixture(private_root.path.clone());
+    let mut fixture = open_existing_fixture(private_root.state.clone());
     let mut owner = fixture.reopen().expect("new owner after child death");
     match cut {
         CrashCut::BeforeResultCommit => assert_precommit_recovery(&mut fixture, &mut owner),
@@ -178,7 +175,7 @@ fn run_process_cut(cut: CrashCut) {
             assert_postcommit_recovery(&mut fixture, &mut owner)
         }
     }
-    assert_one_effect_attempt(&private_root.path);
+    assert_one_effect_attempt(&private_root.state);
     drop(owner);
     drop(fixture);
     private_root.cleanup();
@@ -281,9 +278,9 @@ struct OwnedChild {
 }
 
 impl OwnedChild {
-    fn spawn(root: &Path, cut: CrashCut) -> Self {
-        let stdout = root.join("child.stdout");
-        let stderr = root.join("child.stderr");
+    fn spawn(output_root: &Path, state_root: &Path, cut: CrashCut) -> Self {
+        let stdout = output_root.join("child.stdout");
+        let stderr = output_root.join("child.stderr");
         let stdout_file = OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -299,7 +296,7 @@ impl OwnedChild {
             .env_remove(CUT_ENV)
             .env_remove(ROOT_ENV)
             .env(CUT_ENV, cut.env_value())
-            .env(ROOT_ENV, root)
+            .env(ROOT_ENV, state_root)
             .stdout(Stdio::from(stdout_file))
             .stderr(Stdio::from(stderr_file))
             .spawn()
@@ -324,7 +321,7 @@ impl OwnedChild {
                 panic!(
                     "child exited before barrier: {status}; fixture {}\n{}",
                     marker.parent().expect("private root").display(),
-                    child_diagnostics(marker.parent().expect("private root"))
+                    child_diagnostics(self.stdout.parent().expect("child output root"))
                 );
             }
             std::thread::sleep(Duration::from_millis(10));
@@ -333,7 +330,7 @@ impl OwnedChild {
         panic!(
             "child missed barrier deadline and was reaped ({status}); fixture {}\n{}",
             marker.parent().expect("private root").display(),
-            child_diagnostics(marker.parent().expect("private root"))
+            child_diagnostics(self.stdout.parent().expect("child output root"))
         );
     }
 
@@ -383,6 +380,7 @@ impl Drop for OwnedChild {
 
 struct PrivateRoot {
     path: PathBuf,
+    state: PathBuf,
     cleaned: bool,
 }
 
@@ -398,7 +396,13 @@ impl PrivateRoot {
             std::process::id()
         ));
         assert!(!path.exists(), "fixture root must be absent");
+        let mut builder = fs::DirBuilder::new();
+        builder
+            .mode(0o700)
+            .create(&path)
+            .expect("private output root");
         Self {
+            state: path.join("state"),
             path,
             cleaned: false,
         }
@@ -415,7 +419,7 @@ impl Drop for PrivateRoot {
         if !self.cleaned {
             eprintln!(
                 "preserved synthetic process fixture {}\n{}",
-                self.path.display(),
+                self.state.display(),
                 child_diagnostics(&self.path)
             );
         }
