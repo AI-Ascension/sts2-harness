@@ -212,6 +212,7 @@ fn persist_pause_control_receipt(
 ) {
     let mut authority =
         ControlAuthority::new(publication_boundary(), "revision.publication.storage");
+    let binding = publication_binding(&authority.state().boundary);
     let command = ContextControlCommand::Pause {
         idempotency_key: "migration.pause.1".to_owned(),
         expected_control_version: 1,
@@ -220,7 +221,6 @@ fn persist_pause_control_receipt(
         .request_pause("migration.pause.1", 1)
         .expect("valid control transition");
     let state = authority.state();
-    let binding = publication_binding(&state.boundary);
     let receipt = ContextControlReceipt {
         schema_version: CONTEXT_OWNER_RECEIPT_SCHEMA_VERSION.to_owned(),
         owner_id: PUBLICATION_OWNER.to_owned(),

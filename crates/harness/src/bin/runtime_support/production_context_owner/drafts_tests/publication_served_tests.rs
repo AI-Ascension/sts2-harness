@@ -1,5 +1,17 @@
 // SPDX-License-Identifier: MIT
 
+fn json_contains_key(value: &serde_json::Value, expected: &str) -> bool {
+    match value {
+        serde_json::Value::Object(object) => object
+            .iter()
+            .any(|(key, value)| key == expected || json_contains_key(value, expected)),
+        serde_json::Value::Array(values) => values
+            .iter()
+            .any(|value| json_contains_key(value, expected)),
+        _ => false,
+    }
+}
+
 #[test]
 fn publication_replay_precedes_owner_state_cas_and_metadata_stays_identity_only() {
     let publication = create_served_publication_fixture();
@@ -98,18 +110,22 @@ fn publication_replay_precedes_owner_state_cas_and_metadata_stays_identity_only(
         publication.receipt.source_id
     );
     let encoded = view.to_string();
-    for private_field in [
-        "actor_subject",
-        "request_id",
-        "request_digest",
-        "receipt",
-        note,
-    ] {
+    for private_field in ["actor_subject", "request_id", "request_digest", note] {
         assert!(
             !encoded.contains(private_field),
             "metadata leaked {private_field}"
         );
     }
+    assert!(
+        !json_contains_key(&view, "receipt"),
+        "identity metadata must not contain a publication receipt body"
+    );
+    assert!(
+        view["binding"]["continuity"]["receipt_recovery"]
+            .as_bool()
+            .expect("binding receipt-recovery capability"),
+        "the serialized binding may expose its receipt-recovery capability"
+    );
     let catalog_after = publication
         .fixture
         .owner

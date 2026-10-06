@@ -95,6 +95,24 @@ impl ContextControlStore {
                     )
                     .map_err(|_| DurableControlStoreError::Sqlite)?;
             }
+        } else {
+            // A control commit without a source activation retires the prior source pointer when
+            // it belongs to an older revision. Pause and resume keep the same revision, so their
+            // source and publication link remain active.
+            transaction
+                .execute(
+                    "DELETE FROM context_control_active_context_source
+                     WHERE run_id = ?1 AND active_revision_id <> ?2",
+                    params![self.run_id.as_str(), state.active_revision_id.as_str()],
+                )
+                .map_err(|_| DurableControlStoreError::Sqlite)?;
+            transaction
+                .execute(
+                    "DELETE FROM context_control_active_publication_links
+                     WHERE run_id = ?1 AND active_revision_id <> ?2",
+                    params![self.run_id.as_str(), state.active_revision_id.as_str()],
+                )
+                .map_err(|_| DurableControlStoreError::Sqlite)?;
         }
         transaction
             .execute(

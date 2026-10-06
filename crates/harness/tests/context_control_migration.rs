@@ -173,7 +173,7 @@ fn additive_schema_retry_repairs_a_rolled_back_migration() {
                 |row| row.get::<_, String>(0),
             )
             .expect("schema version"),
-        "2"
+        "3"
     );
     assert_eq!(
         metadata
@@ -183,7 +183,7 @@ fn additive_schema_retry_repairs_a_rolled_back_migration() {
                 |row| row.get::<_, String>(0),
             )
             .expect("schema marker"),
-        "ascension.context-control.sqlite.v2"
+        "ascension.context-control.sqlite.v3"
     );
     assert_eq!(
         metadata

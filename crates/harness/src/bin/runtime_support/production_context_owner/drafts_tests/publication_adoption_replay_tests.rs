@@ -198,6 +198,69 @@ fn adoption_replay_is_bound_to_source_identity_and_survives_later_revision_and_r
         preview_manifest_digest: digest.clone(),
         approved_manifest_digest: digest,
     };
+    {
+        let mut current = publication
+            .fixture
+            .owner
+            .current
+            .lock()
+            .expect("owner lock");
+        current
+            .get_mut(&publication.run)
+            .expect("current owner entry")
+            .store
+            .set_failpoint(Some(
+                sts2_harness::context_control::DurableStoreFailpoint::BeforeCommit,
+            ));
+    }
+    let (status, failed_commit) = call(
+        Arc::clone(&publication.service),
+        Arc::clone(&publication.auth),
+        "publish-token",
+        "POST",
+        &run_path(&publication.run, "context-control-commands"),
+        Some(&serde_json::to_vec(&commit).expect("ordinary commit JSON")),
+    );
+    assert_eq!(status, 503, "injected commit failure: {failed_commit}");
+    // Recover from disk so the assertions observe transaction rollback, not only owner rollback.
+    reopen_fixture_owner_store(&publication.fixture);
+    let (status, source_status_after_failed_commit) = call(
+        Arc::clone(&publication.service),
+        Arc::clone(&publication.auth),
+        "read-token",
+        "GET",
+        &run_path(&publication.run, "context-owner-source-status"),
+        None,
+    );
+    assert_eq!(status, 200);
+    assert_eq!(
+        source_status_after_failed_commit["active_source"],
+        source_status_before_conflict["active_source"],
+        "a rolled-back revision change keeps the original source activation"
+    );
+    assert_eq!(
+        source_status_after_failed_commit["active_revision_id"],
+        paused_binding.approved_revision_id,
+        "a failed commit leaves the authority on the paused revision"
+    );
+    let (status, publication_view_after_failed_commit) = call(
+        Arc::clone(&publication.service),
+        Arc::clone(&publication.auth),
+        "read-token",
+        "GET",
+        &run_path(&publication.run, "context-owner-published-sources"),
+        None,
+    );
+    assert_eq!(status, 200);
+    assert_eq!(
+        publication_view_after_failed_commit["active_source"],
+        publication_view_before_conflict["active_source"],
+        "the failed transaction preserves the active publication link"
+    );
+    assert_eq!(
+        publication_view_after_failed_commit["publications"],
+        publication_view_before_conflict["publications"]
+    );
     let (status, committed) = call(
         Arc::clone(&publication.service),
         Arc::clone(&publication.auth),
@@ -248,6 +311,10 @@ fn adoption_replay_is_bound_to_source_identity_and_survives_later_revision_and_r
         None,
     );
     assert_eq!(status, 200);
+    assert!(
+        source_status_before_historical_replay["active_source"].is_null(),
+        "an ordinary revision without a new source activation retires the prior source"
+    );
     let (status, historical_replay) = call(
         Arc::clone(&publication.service),
         Arc::clone(&publication.auth),
