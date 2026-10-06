@@ -191,7 +191,12 @@ fn operation_lookup_keeps_one_sqlite_snapshot_across_candidate_commit() {
         Arc::clone(&first_keys),
         "catalog.initial",
     );
-    let (request, _) = derive_once_request();
+    let (mut request, _) = derive_once_request();
+    request
+        .admission
+        .as_mut()
+        .expect("request fixture admission")
+        .catalog_revision = "catalog.initial".to_owned();
     let first_response = client(&first_server)
         .request_json("POST", "/v2/workflow-runs", Some(&request_bytes(&request)))
         .expect("first request leaves key-pinned operation");
@@ -307,7 +312,12 @@ fn candidate_operation_lookup_requires_matching_submission_and_run_rows() {
     let store = open_store(&database);
     let keys = Arc::new(CountingAuthority::open(&keyring));
     let server = start_live_server(Arc::clone(&store), Arc::clone(&keys), "catalog.v1");
-    let (request, _) = derive_once_request();
+    let (mut request, _) = derive_once_request();
+    request
+        .admission
+        .as_mut()
+        .expect("request fixture admission")
+        .catalog_revision = "catalog.v1".to_owned();
     let response = client(&server)
         .request_json("POST", "/v2/workflow-runs", Some(&request_bytes(&request)))
         .expect("persist candidate for index checks");

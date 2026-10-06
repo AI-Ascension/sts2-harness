@@ -108,10 +108,6 @@ fn v2_request_rejects_unknown_schema_and_seed_mode() -> Result<(), Box<dyn std::
             .ok()
             .is_some_and(|request| request.validate_seed().is_err())
     );
-    assert!(
-        request(seed_request("future_mode", None))?
-            .validate_seed()
-            .is_err()
-    );
+    assert!(request(seed_request("future_mode", None)).is_err());
     Ok(())
 }

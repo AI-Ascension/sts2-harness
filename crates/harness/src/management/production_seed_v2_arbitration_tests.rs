@@ -326,7 +326,12 @@ fn tampered_operation_index_is_rejected_before_candidate_rows_commit() {
     let store = open_store(&database);
     let keys = Arc::new(TamperingAuthority::open(&keyring, &database));
     let server = start_live_server(Arc::clone(&store), Arc::clone(&keys), "catalog.v1");
-    let (request, _) = derive_once_request();
+    let (mut request, _) = derive_once_request();
+    request
+        .admission
+        .as_mut()
+        .expect("request fixture admission")
+        .catalog_revision = "catalog.v1".to_owned();
     let response = client(&server)
         .request_json("POST", "/v2/workflow-runs", Some(&request_bytes(&request)))
         .expect("served reservation with concurrent index tamper");

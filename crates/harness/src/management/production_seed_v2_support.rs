@@ -9,15 +9,21 @@ use std::sync::{Arc, Mutex};
 use super::{Counters, Shared, duplicate_run_tests};
 use crate::management::{
     AuthContext, CapabilityPort, FileSeedDerivationKeyAuthority, ManagementClient, ManagementError,
-    ManagementServer, ManagementService, SeedDerivationKeyAuthority, SeedModeV2, SeedRequestV2,
-    ServerConfig, SqliteWorkflowStore, StaticAuthenticator, TARGET_CATALOG_SCHEMA_VERSION,
-    TargetCatalogResponse, WORKFLOW_RUN_REQUEST_V2_SCHEMA, WORKFLOW_SEED_REQUEST_V2_SCHEMA,
-    WorkflowExecutionPort, WorkflowRunRequestV2, WorkflowStore, live_run_id,
+    ManagementServer, ManagementService, RunRequest, SeedDerivationKeyAuthority, SeedModeV2,
+    SeedRequestV2, ServerConfig, SqliteWorkflowStore, StaticAuthenticator,
+    TARGET_CATALOG_SCHEMA_VERSION, TargetCatalogResponse, TargetDescriptor,
+    WORKFLOW_RUN_REQUEST_V2_SCHEMA, WORKFLOW_SEED_REQUEST_V2_SCHEMA, WorkflowExecutionPort,
+    WorkflowRunRequestV2, WorkflowStore, live_run_id,
 };
 
 pub(super) const TOKEN: &str = "seed-v2-test-token";
 pub(super) const OTHER_TOKEN: &str = "seed-v2-other-actor-token";
 pub(super) const SUBJECT: &str = "duplicate-fence-actor";
+const SEED_V2_TARGET_CAPABILITIES: &[&str] = &[
+    "observe.fair-play.live.v1",
+    "actions.catalog.v1",
+    "actions.settlement.v1",
+];
 
 pub(super) struct CountingAuthority {
     inner: FileSeedDerivationKeyAuthority,
@@ -69,7 +75,7 @@ pub(super) struct CatalogCapabilities {
 impl CapabilityPort for CatalogCapabilities {
     fn capabilities(&self) -> Result<serde_json::Value, ManagementError> {
         Ok(serde_json::json!({
-            "capabilities": ["observe.fair-play.live.v1"]
+            "capabilities": SEED_V2_TARGET_CAPABILITIES
         }))
     }
 
@@ -81,9 +87,28 @@ impl CapabilityPort for CatalogCapabilities {
         Ok(TargetCatalogResponse {
             schema_version: TARGET_CATALOG_SCHEMA_VERSION.to_owned(),
             catalog_revision: self.revision.clone(),
-            targets: vec![duplicate_run_tests::target_descriptor()],
+            targets: vec![seed_v2_target_descriptor()],
         })
     }
+}
+
+fn seed_v2_target_descriptor() -> TargetDescriptor {
+    let mut descriptor = duplicate_run_tests::target_descriptor();
+    descriptor.capabilities = SEED_V2_TARGET_CAPABILITIES
+        .iter()
+        .map(|capability| (*capability).to_owned())
+        .collect();
+    descriptor
+}
+
+fn bind_seed_v2_target_descriptor(request: &mut RunRequest) {
+    request
+        .admission
+        .as_mut()
+        .expect("seed v2 fixture carries target admission")
+        .descriptor_digest = seed_v2_target_descriptor()
+        .digest()
+        .expect("seed v2 target descriptor digest");
 }
 
 pub(super) struct LiveServerFixture {
@@ -100,7 +125,8 @@ pub(super) fn start_live_server<K>(
 where
     K: SeedDerivationKeyAuthority + 'static,
 {
-    let (request, definition_digest) = duplicate_run_tests::admitted_request();
+    let (mut request, definition_digest) = duplicate_run_tests::admitted_request();
+    bind_seed_v2_target_descriptor(&mut request);
     let run_id = live_run_id(&request, &definition_digest).expect("live run ID");
     let runtime_counters = Arc::new(Mutex::new(Counters::default()));
     let execution = duplicate_run_tests::live_port(&runtime_counters, &run_id);
@@ -139,7 +165,8 @@ where
 }
 
 pub(super) fn derive_once_request() -> (WorkflowRunRequestV2, String) {
-    let (legacy, definition_digest) = duplicate_run_tests::admitted_request();
+    let (mut legacy, definition_digest) = duplicate_run_tests::admitted_request();
+    bind_seed_v2_target_descriptor(&mut legacy);
     let request = WorkflowRunRequestV2 {
         schema_version: WORKFLOW_RUN_REQUEST_V2_SCHEMA.to_owned(),
         request_id: legacy.request_id,

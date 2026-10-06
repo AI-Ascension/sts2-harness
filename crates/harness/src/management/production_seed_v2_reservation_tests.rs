@@ -67,7 +67,7 @@ fn reservation_commit_failure_selects_no_seed_and_rotated_retry_pins_new_key() {
         Arc::clone(&first_keys),
         "live.catalog.v1",
     );
-    let (request, _) = derive_once_request();
+    let (mut request, _) = derive_once_request();
     let response = client(&first_server)
         .request_json("POST", "/v2/workflow-runs", Some(&request_bytes(&request)))
         .expect("served failed reservation response");
@@ -87,6 +87,11 @@ fn reservation_commit_failure_selects_no_seed_and_rotated_retry_pins_new_key() {
             "failed reservation leaves {table} empty"
         );
     }
+    request
+        .admission
+        .as_mut()
+        .expect("request fixture admission")
+        .catalog_revision = "live.catalog.v2".to_owned();
     first_server
         .server
         .shutdown()
