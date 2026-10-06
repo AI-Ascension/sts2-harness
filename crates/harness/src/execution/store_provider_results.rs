@@ -11,7 +11,17 @@ use super::types::{
     ProviderFailureClass, ProviderReservationState, StoredDecision, valid_reference,
 };
 
+#[cfg(all(test, unix))]
+thread_local! { static RESULT_COMMIT_BARRIER: std::cell::RefCell<Option<std::path::PathBuf>> = const {
+    std::cell::RefCell::new(None)
+}; }
+
 impl ExecutionStore {
+    #[cfg(all(test, unix))]
+    pub(crate) fn inject_result_commit_process_barrier(marker: std::path::PathBuf) {
+        RESULT_COMMIT_BARRIER.with(|barrier| *barrier.borrow_mut() = Some(marker));
+    }
+
     pub fn complete_provider(
         &mut self,
         reservation_id: &str,
@@ -215,9 +225,45 @@ impl ExecutionStore {
             Some(result_digest),
             now,
         )?;
+        #[cfg(all(test, unix))]
+        if result_payload.is_some() {
+            wait_at_result_commit_barrier()?;
+        }
         tx.commit().map_err(schema::map_sqlite)?;
         self.decision(&current.execution_id)
     }
+}
+
+#[cfg(all(test, unix))]
+fn wait_at_result_commit_barrier() -> Result<(), super::types::ExecutionStoreError> {
+    use std::io::Write;
+    let marker = RESULT_COMMIT_BARRIER.with(|barrier| barrier.borrow_mut().take());
+    let Some(marker) = marker else {
+        return Ok(());
+    };
+    let pending = marker.with_extension("pending");
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&pending)
+        .map_err(|_| super::types::ExecutionStoreError::Busy)?;
+    file.write_all(b"result transaction updates reached before commit\n")
+        .map_err(|_| super::types::ExecutionStoreError::Busy)?;
+    file.sync_all()
+        .map_err(|_| super::types::ExecutionStoreError::Busy)?;
+    std::fs::rename(&pending, &marker).map_err(|_| super::types::ExecutionStoreError::Busy)?;
+    std::fs::File::open(
+        marker
+            .parent()
+            .ok_or(super::types::ExecutionStoreError::Busy)?,
+    )
+    .and_then(|directory| directory.sync_all())
+    .map_err(|_| super::types::ExecutionStoreError::Busy)?;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    while std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    Err(super::types::ExecutionStoreError::Busy)
 }
 
 fn valid_result_payload(payload: &[u8], digest: &str) -> bool {
