@@ -84,7 +84,7 @@ impl ExoIdentity {
         if !self
             .endpoint
             .as_deref()
-            .is_some_and(|endpoint| valid_synthetic_endpoint(endpoint))
+            .is_some_and(valid_synthetic_endpoint)
         {
             return Err(ExoIdentityError::InvalidEndpoint);
         }
