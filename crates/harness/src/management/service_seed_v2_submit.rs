@@ -11,9 +11,9 @@ use super::super::super::seed_v2_crypto::{
 use super::super::super::store::{SeedBindingLookup, SeedOperationLookup, SeedOperationRecord};
 use super::super::inference_profile_ops::{admit_inference_profiles, bind_inference_provenance};
 use super::super::seed_v2_support::{
-    corrupt_seed_record, derive_from_pinned_operation, existing_submission, response,
-    same_operation_request, seed_key_error, seed_request_error, submission_conflict,
-    validate_definition,
+    corrupt_seed_record, derive_from_pinned_operation, existing_submission,
+    require_durable_candidate_mode, response, same_operation_request, seed_key_error,
+    seed_request_error, submission_conflict, validate_definition,
 };
 use super::super::support::{authorize, enforce_live_profile, validate_profile, verify_admission};
 use super::super::target_admission::{
@@ -122,6 +122,7 @@ pub(super) fn submit(
                         "v2 seed submission requires an owner-revalidated target admission",
                     )
                 })?;
+            require_durable_candidate_mode(service, request.seed.mode)?;
             let resolved = if is_live_profile(&request.profile) {
                 admit_inference_profiles(service, actor, &execution_request, &binding)?
             } else {

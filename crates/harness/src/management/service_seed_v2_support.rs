@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: MIT
 
 use super::super::auth::AuthContext;
-use super::super::contract::{DiagnosticSeverity, RunSnapshot, digest_value};
+use super::super::contract::{DiagnosticSeverity, RunSnapshot, TargetAvailability, digest_value};
+use super::super::contract_seed_v2::SeedModeV2;
 use super::super::contract_seed_v2::{
     SeedBindingReadbackV2, SeedBindingStateV2, SeededRunSubmissionResponseV2,
     StoredSeedOperationV2, WORKFLOW_RUN_SUBMISSION_V2_SCHEMA, WorkflowRunRequestV2,
 };
+use super::super::seed_key::SeedDerivationKeyReadiness;
 use super::super::seed_key::SeedKeyError;
 use super::super::seed_v2_crypto::{
     derive_candidate_from_operation, load_pinned_operation_key, verify_candidate,
@@ -14,6 +16,64 @@ use super::super::store::SeedBindingRecord;
 use super::support::authorize;
 use super::support::{run_submission_response, verify_digest};
 use super::{ManagementError, ManagementService};
+
+pub(super) const TARGET_SEED_SUPPORT_REVISION: &str = "seed-support.v1";
+
+pub(super) fn supports_durable_candidate_mode(
+    service: &ManagementService,
+    mode: SeedModeV2,
+) -> bool {
+    if !service.store.supports_durable_seed_bindings() {
+        return false;
+    }
+    match mode {
+        SeedModeV2::Explicit => true,
+        SeedModeV2::DeriveOnce => {
+            service.store.supports_seed_operation_reservations()
+                && service.seed_derivation_keys().is_some()
+        }
+    }
+}
+
+pub(super) fn durable_candidate_modes(service: &ManagementService) -> Vec<SeedModeV2> {
+    [SeedModeV2::Explicit, SeedModeV2::DeriveOnce]
+        .into_iter()
+        .filter(|mode| supports_durable_candidate_mode(service, *mode))
+        .collect()
+}
+
+pub(super) fn ready_candidate_modes(
+    service: &ManagementService,
+    availability: &TargetAvailability,
+    durable_modes: &[SeedModeV2],
+) -> Vec<SeedModeV2> {
+    if availability != &TargetAvailability::Available {
+        return Vec::new();
+    }
+    durable_modes
+        .iter()
+        .copied()
+        .filter(|mode| match mode {
+            SeedModeV2::Explicit => true,
+            SeedModeV2::DeriveOnce => service.seed_derivation_keys().is_some_and(|authority| {
+                authority.readiness() == SeedDerivationKeyReadiness::Ready
+            }),
+        })
+        .collect()
+}
+
+pub(super) fn require_durable_candidate_mode(
+    service: &ManagementService,
+    mode: SeedModeV2,
+) -> Result<(), ManagementError> {
+    if supports_durable_candidate_mode(service, mode) {
+        return Ok(());
+    }
+    Err(ManagementError::unavailable(
+        "seed_candidate_support_unavailable",
+        "configured storage and key authority cannot durably support this seed mode",
+    ))
+}
 
 pub(super) fn validate_definition(
     service: &ManagementService,
