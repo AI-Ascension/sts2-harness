@@ -16,7 +16,9 @@
 //! executed.
 
 mod admission;
+mod admission_v2;
 mod catalog;
+pub mod contract_v2;
 mod definition;
 mod error;
 mod ids;
