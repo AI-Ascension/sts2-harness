@@ -16,6 +16,9 @@ mod capability;
 #[path = "exo_bridge_configuration/digest.rs"]
 mod digest;
 
+#[path = "exo_bridge_configuration/synthetic_inspection.rs"]
+mod synthetic_inspection;
+
 use digest::bridge_digest;
 
 pub use capability::{
@@ -25,6 +28,8 @@ pub use capability::{
     UNSUPPORTED_RECOVERY_CODE, UnsupportedProfileAxis, capability_fields, provider_route_admitted,
     synthetic_route_admitted, unsupported_profile_axis,
 };
+
+pub use synthetic_inspection::{SyntheticInspectionError, SyntheticLoopbackInspection};
 
 pub const MAX_EXECUTOR_BYTES: usize = 512 * 1024 * 1024;
 pub const MAX_EXTENSION_BYTES: usize = 64 * 1024;

@@ -72,6 +72,29 @@ impl ExoIdentity {
     }
 
     pub(super) fn validate(&self) -> Result<(), ExoIdentityError> {
+        self.validate_with_endpoint(valid_endpoint)
+    }
+
+    /// Validates the closed synthetic-only identity route without broadening the production HTTPS
+    /// validator used by descriptor validation and provider preflight.
+    pub(crate) fn validate_synthetic_loopback(&self) -> Result<(), ExoIdentityError> {
+        if self.model_binding.as_deref() != Some(crate::exo_bridge_configuration::SYNTHETIC_MODEL) {
+            return Err(ExoIdentityError::InvalidModelBinding);
+        }
+        if !self
+            .endpoint
+            .as_deref()
+            .is_some_and(|endpoint| valid_synthetic_endpoint(endpoint))
+        {
+            return Err(ExoIdentityError::InvalidEndpoint);
+        }
+        self.validate_with_endpoint(valid_synthetic_endpoint)
+    }
+
+    fn validate_with_endpoint(
+        &self,
+        endpoint_validator: impl Fn(&str) -> bool,
+    ) -> Result<(), ExoIdentityError> {
         if !valid_revision(&self.source_revision) {
             return Err(ExoIdentityError::InvalidSourceRevision);
         }
@@ -109,7 +132,7 @@ impl ExoIdentity {
         if self
             .endpoint
             .as_deref()
-            .is_some_and(|value| !valid_endpoint(value))
+            .is_some_and(|value| !endpoint_validator(value))
         {
             return Err(ExoIdentityError::InvalidEndpoint);
         }
@@ -200,4 +223,17 @@ pub(super) fn valid_endpoint(value: &str) -> bool {
             .strip_prefix("https://")
             .and_then(|rest| rest.split('/').next())
             .is_some_and(|host| !host.is_empty())
+}
+
+fn valid_synthetic_endpoint(value: &str) -> bool {
+    value
+        .strip_prefix(crate::exo_bridge_configuration::SYNTHETIC_ENDPOINT_PREFIX)
+        .is_some_and(|port| {
+            !port.is_empty()
+                && port.bytes().all(|byte| byte.is_ascii_digit())
+                && crate::exo_bridge_configuration::synthetic_route_admitted(
+                    value,
+                    crate::exo_bridge_configuration::SYNTHETIC_MODEL,
+                )
+        })
 }
