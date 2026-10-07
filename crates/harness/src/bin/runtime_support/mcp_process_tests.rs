@@ -133,6 +133,38 @@ fn map_profile_has_a_wider_response_bound_without_widening_gameplay() -> Result<
     map.close()
 }
 
+#[test]
+fn map_profile_cleanup_deadlines_cap_graceful_and_force_reap_waits() {
+    let now = Instant::now();
+    let profile_deadline = now + Duration::from_millis(800);
+    assert_eq!(
+        McpProcess::cleanup_deadline_at(GRACEFUL_CLOSE_TIMEOUT, Some(profile_deadline), now),
+        Some(profile_deadline)
+    );
+    assert_eq!(
+        McpProcess::cleanup_deadline_at(FORCE_REAP_TIMEOUT, Some(profile_deadline), now),
+        Some(now + FORCE_REAP_TIMEOUT)
+    );
+    assert_eq!(
+        McpProcess::cleanup_deadline_at(GRACEFUL_CLOSE_TIMEOUT, None, now),
+        Some(now + GRACEFUL_CLOSE_TIMEOUT)
+    );
+    let near_end = now + Duration::from_millis(100);
+    let after_graceful_wait = now + Duration::from_millis(50);
+    for maximum in [GRACEFUL_CLOSE_TIMEOUT, FORCE_REAP_TIMEOUT] {
+        assert_eq!(
+            McpProcess::cleanup_deadline_at(maximum, Some(near_end), after_graceful_wait),
+            Some(near_end),
+            "both cleanup waits share the same absolute cap"
+        );
+    }
+    assert_eq!(
+        McpProcess::cleanup_deadline_at(FORCE_REAP_TIMEOUT, Some(now), now),
+        Some(now),
+        "an expired profile deadline must not create a fresh cleanup window"
+    );
+}
+
 fn session_config() -> RuntimeConfig {
     RuntimeConfig {
         seed_transport: None,

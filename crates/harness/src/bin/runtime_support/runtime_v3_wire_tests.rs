@@ -5,6 +5,7 @@ use super::super::mcp_process::McpProcessErrorKind;
 use super::super::runtime_v3::{
     RuntimeV3ToolError, accepts_recovery_envelope_for_tool, transient_allowed_for_tool,
 };
+use std::time::{Duration, Instant};
 
 /// An MCP tool-error response whose single text content is `text`.
 fn tool_error_with_text(text: &str) -> serde_json::Value {
@@ -167,6 +168,50 @@ fn transition_wait_budget_includes_requested_semantic_wait() -> Result<(), Strin
     assert!(request_timeout("tools/call", &params).is_err());
     params["arguments"]["wait_for_millis"] = Value::Null;
     assert!(request_timeout("tools/call", &params).is_err());
+    Ok(())
+}
+
+#[test]
+fn map_profile_deadline_reserves_cleanup_and_caps_every_rpc() -> Result<(), String> {
+    let start = Instant::now();
+    let deadline = MapProfileDeadline::from_start(start)
+        .ok_or_else(|| String::from("fixture map profile deadline must be representable"))?;
+    let request = Duration::from_secs(5);
+
+    assert_eq!(deadline.rpc_timeout_at(start, request), Some(request));
+    assert_eq!(
+        deadline.rpc_timeout_at(start + Duration::from_secs(5), request),
+        Some(Duration::from_millis(3_750))
+    );
+    assert_eq!(
+        deadline.rpc_timeout_at(start + Duration::from_millis(7_500), request),
+        Some(Duration::from_millis(1_250))
+    );
+    let exhausted = start + Duration::from_millis(8_750);
+    assert_eq!(deadline.rpc_timeout_at(exhausted, request), None);
+    assert_eq!(
+        deadline.remaining_at(start + Duration::from_secs(9)),
+        Duration::from_secs(1)
+    );
+
+    let mut invoked = false;
+    assert!(deadline
+        .with_rpc_timeout_at(exhausted, request, |_| invoked = true)
+        .is_none());
+    assert!(!invoked, "expired deadlines must not start another RPC");
+    Ok(())
+}
+
+#[test]
+fn map_deadline_helper_keeps_transition_wait_timeout_policy_unchanged() -> Result<(), String> {
+    let params = json!({
+        "name":"sts2.wait_for_transition",
+        "arguments":{"wait_for_millis":120_000}
+    });
+    assert_eq!(
+        request_timeout("tools/call", &params)?,
+        Duration::from_millis(125_000)
+    );
     Ok(())
 }
 

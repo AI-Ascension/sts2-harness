@@ -21,6 +21,12 @@ enum WorkerCommand {
         u64,
         SyncSender<Result<EpisodeLegalActionSet, PortError>>,
     ),
+    MapSnapshot(
+        String,
+        u64,
+        sts2_harness::ModelExecutionId,
+        SyncSender<Result<Option<Value>, PortError>>,
+    ),
     Dispatch(
         ActionIdentity,
         EpisodeLegalAction,
@@ -142,6 +148,11 @@ fn worker_main(
             WorkerCommand::LegalActions(state, generation, reply) => {
                 let _ = reply.send(port.legal_actions(&state, generation));
             }
+            WorkerCommand::MapSnapshot(state, generation, execution_id, reply) => {
+                let result =
+                    map_forward::forward_map_snapshot(&mut port, &state, generation, execution_id);
+                let _ = reply.send(result);
+            }
             WorkerCommand::Dispatch(identity, action, reply) => {
                 let _ = reply.send(port.dispatch_action(&identity, &action));
             }
@@ -199,6 +210,18 @@ impl EpisodeRuntimePort for RuntimeV3SessionWorker {
         let (tx, rx) = sync_channel(1);
         self.call(
             WorkerCommand::LegalActions(state.to_owned(), generation, tx),
+            rx,
+        )?
+    }
+    fn map_snapshot(
+        &mut self,
+        state_id: &str,
+        generation: u64,
+        execution_id: sts2_harness::ModelExecutionId,
+    ) -> Result<Option<Value>, PortError> {
+        let (tx, rx) = sync_channel(1);
+        self.call(
+            WorkerCommand::MapSnapshot(state_id.to_owned(), generation, execution_id, tx),
             rx,
         )?
     }
@@ -278,3 +301,6 @@ impl Drop for RuntimeV3SessionWorker {
         }
     }
 }
+
+#[path = "runtime_v3_worker_map_forward.rs"]
+mod map_forward;

@@ -14,6 +14,9 @@ mod protected;
 mod recovery;
 mod run_setup;
 mod runner;
+#[cfg(test)]
+#[path = "runner_map_snapshot_tests.rs"]
+mod runner_map_snapshot_tests;
 mod runtime_lease_binding;
 mod shutdown;
 mod stability_barrier;
