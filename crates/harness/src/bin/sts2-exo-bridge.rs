@@ -17,6 +17,11 @@ use std::io::{Read, Write};
 use sts2_harness::exo_lookup_process::ExoLookupProfile;
 #[cfg(target_os = "linux")]
 use sts2_harness::parse_bridge_request_envelope;
+#[cfg(target_os = "linux")]
+use sts2_harness::provider_session::NativeCapabilities;
+
+#[cfg(target_os = "linux")]
+const MAX_PROVIDER_CAPABILITIES_BYTES: usize = 8 * 1024;
 
 #[cfg(target_os = "linux")]
 fn main() {
@@ -38,6 +43,9 @@ fn execute() -> Result<(), &'static str> {
     let [mode, path, rest @ ..] = args.as_slice() else {
         return Err("exo_bridge_arguments");
     };
+    if mode == "--provider-capabilities" {
+        return describe_provider_capabilities(path, provider_capability_instance(rest)?);
+    }
     if let Some(profile) = lookup::profile_for(mode) {
         let loaded = config::load_profile(path, true)?;
         let describe = mode.ends_with("-describe");
@@ -92,6 +100,39 @@ fn execute() -> Result<(), &'static str> {
 }
 
 #[cfg(target_os = "linux")]
+fn describe_provider_capabilities(path: &str, instance_id: &str) -> Result<(), &'static str> {
+    let loaded = config::load(path)?;
+    if loaded.guarded_private_state().is_none() {
+        return Err("exo_bridge_private_policy");
+    }
+    loaded.validate_route(false)?;
+    let bridge = std::env::current_exe().map_err(|_| "exo_bridge_package")?;
+    let identity = loaded.inspected_identity(&bridge, instance_id)?;
+    let capabilities = NativeCapabilities::reviewed_exo_one_shot(&identity)
+        .map_err(|_| "exo_bridge_provider_profile")?;
+    write_output(&serialize_provider_capabilities(&capabilities)?)
+}
+
+#[cfg(target_os = "linux")]
+fn provider_capability_instance(rest: &[String]) -> Result<&str, &'static str> {
+    match rest {
+        [instance_id] => Ok(instance_id),
+        _ => Err("exo_bridge_arguments"),
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn serialize_provider_capabilities(
+    capabilities: &NativeCapabilities,
+) -> Result<Vec<u8>, &'static str> {
+    let bytes = serde_json::to_vec(capabilities).map_err(|_| "exo_bridge_description")?;
+    if bytes.len() > MAX_PROVIDER_CAPABILITIES_BYTES {
+        return Err("exo_bridge_description_bound");
+    }
+    Ok(bytes)
+}
+
+#[cfg(target_os = "linux")]
 fn write_output(bytes: &[u8]) -> Result<(), &'static str> {
     let mut output = std::io::stdout();
     output
@@ -116,4 +157,27 @@ fn read_input() -> Result<Vec<u8>, &'static str> {
         .recv_timeout(std::time::Duration::from_secs(5))
         .map_err(|_| "exo_bridge_input_timeout")?
         .map_err(|_| "exo_bridge_input")
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod provider_capabilities_tests {
+    use super::*;
+
+    #[test]
+    fn descriptor_mode_requires_one_argument_and_bounds_output() {
+        assert_eq!(
+            provider_capability_instance(&[String::from("instance")]),
+            Ok("instance")
+        );
+        assert_eq!(
+            provider_capability_instance(&[]),
+            Err("exo_bridge_arguments")
+        );
+        let mut capabilities = NativeCapabilities::fixture();
+        capabilities.unknown_methods = "x".repeat(MAX_PROVIDER_CAPABILITIES_BYTES);
+        assert_eq!(
+            serialize_provider_capabilities(&capabilities),
+            Err("exo_bridge_description_bound")
+        );
+    }
 }
