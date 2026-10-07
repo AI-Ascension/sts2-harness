@@ -32,8 +32,11 @@ mod map_deadline;
 pub(super) use map_deadline::MapProfileDeadline;
 #[path = "runtime_v3_wire_bounded_rpc.rs"]
 mod bounded_rpc;
+#[cfg(test)]
 pub(super) use bounded_rpc::{
     has_catalog_reobserve, is_transient_gateway_rpc_error, is_transient_gateway_tool_error,
+};
+pub(super) use bounded_rpc::{
     rpc_call, rpc_call_catalog_read, rpc_call_recovery_read, rpc_call_with_deadline,
 };
 
