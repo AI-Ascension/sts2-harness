@@ -137,6 +137,20 @@ pub trait SeedDerivationKeyAuthority: Send + Sync {
         authority_id: &str,
         version: &str,
     ) -> Result<Option<SeedKeyHandle>, SeedKeyError>;
+
+    /// Return a non-secret readiness hint for the immutable current-key snapshot.
+    /// Implementations that cannot prove readiness remain Unknown by default.
+    fn readiness(&self) -> SeedDerivationKeyReadiness {
+        SeedDerivationKeyReadiness::Unknown
+    }
+}
+
+/// Non-secret status for whether a new derive-once candidate may be attempted.
+/// This is discovery only; submission must still retrieve the current key.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SeedDerivationKeyReadiness {
+    Ready,
+    Unknown,
 }
 
 /// Bounded, non-reflecting key-authority failures.
@@ -259,6 +273,14 @@ impl SeedDerivationKeyAuthority for Keyring {
             return Ok(None);
         }
         self.handle(version).map(Some)
+    }
+
+    fn readiness(&self) -> SeedDerivationKeyReadiness {
+        if self.versions.contains_key(&self.current_version) {
+            SeedDerivationKeyReadiness::Ready
+        } else {
+            SeedDerivationKeyReadiness::Unknown
+        }
     }
 }
 

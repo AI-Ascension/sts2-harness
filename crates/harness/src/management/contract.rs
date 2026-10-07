@@ -10,6 +10,8 @@ mod inference_profiles;
 mod json;
 #[path = "contract_provider_session.rs"]
 mod provider_session;
+#[path = "contract_seed_support_v2.rs"]
+mod seed_support_v2;
 #[path = "contract_store_types.rs"]
 mod store_types;
 #[path = "contract_target_admission.rs"]
@@ -21,6 +23,7 @@ pub use inference_profile::*;
 pub use inference_profiles::*;
 pub use json::*;
 pub use provider_session::*;
+pub use seed_support_v2::*;
 pub use store_types::*;
 pub use target_admission::*;
 pub use types::*;

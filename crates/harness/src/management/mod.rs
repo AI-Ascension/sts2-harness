@@ -137,6 +137,10 @@ pub use contract::{
     ValidateRequest, ValidateResponse, WorkflowRunStatus, decode_strict, decode_value,
     digest_value, inference_catalog_digest, validate_digest, validate_identifier,
 };
+pub use contract::{
+    MAX_SEED_LAUNCH_SETUPS_V2, MAX_SEED_SUPPORT_MODES, MAX_SEED_SUPPORT_TARGETS, SeedLaunchSetupV2,
+    TARGET_SEED_SUPPORT_CATALOG_V2_SCHEMA, TargetSeedSupportCatalogV2, TargetSeedSupportV2,
+};
 pub use contract_authoring::{
     STUDIO_SCHEMA_VERSION, StudioCreateDraftRequest, StudioDefinitionRecord,
     StudioDefinitionsResponse, StudioDraftConflict, StudioDraftRecord, StudioPublishDraftRequest,
@@ -199,8 +203,8 @@ pub use save_profile_setup::{
     is_profile_identity,
 };
 pub use seed_key::{
-    FileSeedDerivationKeyAuthority, SeedDerivationKeyAuthority, SeedKeyError, SeedKeyHandle,
-    SeedKeyIdentity,
+    FileSeedDerivationKeyAuthority, SeedDerivationKeyAuthority, SeedDerivationKeyReadiness,
+    SeedKeyError, SeedKeyHandle, SeedKeyIdentity,
 };
 pub use service::{
     CapabilityPort, CommandApplication, CommandContext, ContextInspectionPort,

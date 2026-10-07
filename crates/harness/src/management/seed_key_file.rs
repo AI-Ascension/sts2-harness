@@ -4,7 +4,9 @@ use std::path::Path;
 
 use zeroize::Zeroizing;
 
-use super::{Keyring, SeedDerivationKeyAuthority, SeedKeyError, SeedKeyHandle};
+use super::{
+    Keyring, SeedDerivationKeyAuthority, SeedDerivationKeyReadiness, SeedKeyError, SeedKeyHandle,
+};
 
 #[cfg(target_os = "linux")]
 use super::MAX_KEYRING_BYTES;
@@ -43,6 +45,10 @@ impl SeedDerivationKeyAuthority for FileSeedDerivationKeyAuthority {
         version: &str,
     ) -> Result<Option<SeedKeyHandle>, SeedKeyError> {
         self.keyring.key_for(authority_id, version)
+    }
+
+    fn readiness(&self) -> SeedDerivationKeyReadiness {
+        self.keyring.readiness()
     }
 }
 
