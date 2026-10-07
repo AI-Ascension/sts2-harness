@@ -16,6 +16,8 @@ use sts2_harness::provider_session::NativeCapabilities;
 
 use super::{RuntimeConfig, runtime_v3, runtime_v3_admission, runtime_v3_settings};
 use runtime_v3_settings::RuntimeV3Settings;
+#[path = "workflow_service_profile_identity.rs"]
+mod identity;
 #[path = "workflow_service_profile_dispatch_provider.rs"]
 mod provider;
 pub(super) use provider::Provider;
@@ -41,50 +43,7 @@ fn verified_identity(
     config: &RuntimeConfig,
     settings: &RuntimeV3Settings,
 ) -> Result<VerifiedProfileIdentity, ManagementError> {
-    if settings.lookup_agent.is_some() {
-        return Err(unsupported(
-            "the selected lookup route is not the live decision profile",
-        ));
-    }
-    let ExoRuntimeAdmission::Enveloped(plan) = &settings.admission else {
-        return Err(unsupported(
-            "raw-wire Exo admission has no inspected profile identity",
-        ));
-    };
-    plan.validate()
-        .map_err(|_| unsupported("the inspected Exo deployment did not pass admission"))?;
-    let trusted = plan.trusted_identity();
-    let inspected = plan.inspected_identity();
-    if trusted.model_binding != inspected.model_binding
-        || trusted.prompt_digest != inspected.prompt_digest
-        || trusted.config_digest != inspected.config_digest
-        || trusted.native_instance_id != inspected.native_instance_id
-        || inspected.native_instance_id.as_deref() != Some(config.instance_id.as_str())
-    {
-        return Err(unsupported(
-            "the trusted and independently inspected Exo profile identities differ",
-        ));
-    }
-    let requested_model = inspected
-        .model_binding
-        .as_deref()
-        .filter(|model| *model == capabilities.binding.model_revision)
-        .ok_or_else(|| {
-            unsupported("the inspected model does not match the reviewed provider binding")
-        })?;
-    let prompt_revision = inspected
-        .prompt_digest
-        .as_deref()
-        .ok_or_else(|| unsupported("the inspected prompt identity is unavailable"))?;
-    let inspected_config_digest = inspected
-        .config_digest
-        .as_deref()
-        .ok_or_else(|| unsupported("the inspected settings identity is unavailable"))?;
-    Ok(VerifiedProfileIdentity {
-        requested_model: requested_model.to_owned(),
-        prompt_revision: prompt_revision.to_owned(),
-        inspected_config_digest: inspected_config_digest.to_owned(),
-    })
+    identity::verified_identity(capabilities, config, settings)
 }
 
 fn descriptor(
