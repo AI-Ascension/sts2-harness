@@ -13,6 +13,10 @@ use super::super::service::InferenceProfileRevisionRequest;
 use super::response::reason_phrase;
 use super::*;
 
+#[cfg(test)]
+#[path = "http_target_seed_support_tests.rs"]
+mod target_seed_support_tests;
+
 pub(super) fn dispatch(
     request: HttpRequest,
     service: &ManagementService,
@@ -59,6 +63,9 @@ pub(super) fn dispatch(
             }
             ("GET", "/v1/workflow-targets") if request.query.is_empty() => service
                 .target_catalog(&actor)
+                .and_then(|value| json_value(&value)),
+            ("GET", "/v2/workflow-targets") if request.query.is_empty() => service
+                .target_seed_support_catalog(&actor)
                 .and_then(|value| json_value(&value)),
             ("POST", "/v1/workflow-targets/preflight") if request.query.is_empty() => {
                 let body: TargetAdmissionRequest = decode_body_management(&request.body)?;

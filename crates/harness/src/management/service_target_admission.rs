@@ -10,6 +10,13 @@ use super::*;
 #[path = "service_target_validation.rs"]
 mod target_validation;
 
+#[path = "service_target_seed_support.rs"]
+mod seed_support;
+
+#[cfg(test)]
+#[path = "service_target_seed_support_tests.rs"]
+mod seed_support_tests;
+
 use target_validation::validate_target_selection;
 
 impl ManagementService {

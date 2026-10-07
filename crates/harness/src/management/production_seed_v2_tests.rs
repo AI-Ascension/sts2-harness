@@ -19,3 +19,7 @@ mod reservation;
 #[cfg(target_os = "linux")]
 #[path = "production_seed_v2_reservation_process_tests.rs"]
 mod reservation_process;
+
+#[cfg(test)]
+#[path = "production_seed_v2_policy_tests.rs"]
+mod policy;

@@ -4,9 +4,34 @@ use std::fs;
 use std::path::PathBuf;
 
 use super::{
-    FileSeedDerivationKeyAuthority, Keyring, SeedDerivationKeyAuthority, SeedKeyError,
-    decode_lower_hex, derive_seed, framed, hmac_sha256,
+    FileSeedDerivationKeyAuthority, Keyring, SeedDerivationKeyAuthority,
+    SeedDerivationKeyReadiness, SeedKeyError, SeedKeyHandle, decode_lower_hex, derive_seed, framed,
+    hmac_sha256,
 };
+
+struct UnknownReadinessAuthority;
+
+impl SeedDerivationKeyAuthority for UnknownReadinessAuthority {
+    fn current_key(&self) -> Result<SeedKeyHandle, SeedKeyError> {
+        Err(SeedKeyError::Unavailable)
+    }
+
+    fn key_for(
+        &self,
+        _authority_id: &str,
+        _version: &str,
+    ) -> Result<Option<SeedKeyHandle>, SeedKeyError> {
+        Ok(None)
+    }
+}
+
+#[test]
+fn arbitrary_key_authorities_default_to_unknown_readiness() {
+    assert_eq!(
+        UnknownReadinessAuthority.readiness(),
+        SeedDerivationKeyReadiness::Unknown
+    );
+}
 
 #[test]
 fn hmac_sha256_matches_the_published_known_answer() {
@@ -109,6 +134,7 @@ fn private_linux_keyring_loads_by_descriptor_and_rejects_symlinks_and_open_modes
         Ok(value) => value,
         Err(_) => return,
     };
+    assert_eq!(authority.readiness(), SeedDerivationKeyReadiness::Ready);
     let current = authority.current_key();
     assert!(current.is_ok());
     let current = match current {
@@ -117,7 +143,10 @@ fn private_linux_keyring_loads_by_descriptor_and_rejects_symlinks_and_open_modes
     };
     assert_eq!(current.identity().version, "active");
     drop(current);
+    assert!(fs::write(&keyring_path, "invalid snapshot replacement").is_ok());
+    assert_eq!(authority.readiness(), SeedDerivationKeyReadiness::Ready);
     drop(authority);
+    assert!(fs::write(&keyring_path, keyring_text("active", "11")).is_ok());
 
     let alias = directory.path().join("alias.conf");
     assert!(symlink(&keyring_path, &alias).is_ok());
