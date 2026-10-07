@@ -53,7 +53,7 @@ fn large_snapshot() -> Value {
     })
 }
 
-fn map_response(config: &RuntimeConfig) -> Result<(String, usize), String> {
+fn map_message_text(config: &RuntimeConfig) -> Result<(String, usize), String> {
     let snapshot = large_snapshot();
     let snapshot_bytes = serde_json::to_vec(&snapshot)
         .map_err(|_| String::from("large map snapshot serialization failed"))?;
@@ -68,13 +68,19 @@ fn map_response(config: &RuntimeConfig) -> Result<(String, usize), String> {
     });
     let text = serde_json::to_string(&envelope)
         .map_err(|_| String::from("large map envelope serialization failed"))?;
+    Ok((text, snapshot_bytes.len()))
+}
+
+fn map_response(config: &RuntimeConfig) -> Result<(String, usize, usize), String> {
+    let (text, snapshot_bytes) = map_message_text(config)?;
+    let message_bytes = text.len();
     let frame = json!({
         "jsonrpc":"2.0", "id":3,
         "result":{"content":[{"type":"text","text":text}]}
     });
     let frame = serde_json::to_string(&frame)
         .map_err(|_| String::from("large MCP response serialization failed"))?;
-    Ok((frame, snapshot_bytes.len()))
+    Ok((frame, snapshot_bytes, message_bytes))
 }
 
 fn catalog_response() -> String {
@@ -128,17 +134,20 @@ fn script_path() -> Result<PathBuf, String> {
 fn map_profile_reads_a_complete_near_bound_response_from_mcp_stdout() -> Result<(), String> {
     let path = script_path()?;
     let response_path = path.with_extension("response");
+    let request_path = path.with_extension("request");
     let bootstrap = json!({"jsonrpc":"2.0","id":1,"result":{}}).to_string();
     let catalog = catalog_response();
     let mut config = config_for_script(&path, "placeholder");
-    let (response, snapshot_bytes) = map_response(&config)?;
+    let (response, snapshot_bytes, message_bytes) = map_response(&config)?;
     assert!(snapshot_bytes <= 256 * 1024);
+    assert!(message_bytes <= 256 * 1024);
     assert!(response.len() > 256 * 1024);
-    assert!(response.len() <= MAX_RESPONSE_BYTES);
+    assert!(response.len() <= 512 * 1024);
     config.gateway_address = response_path.to_string_lossy().into_owned();
+    config.gateway_token = request_path.to_string_lossy().into_owned();
 
     let script = format!(
-        "#!/bin/sh\nread request || exit 1\nprintf '%s\\n' '{bootstrap}'\nread request || exit 1\nprintf '%s\\n' '{catalog}'\nread request || exit 1\ncat \"$STS2_GATEWAY_ADDR\" || exit 1\nprintf '\\n'\n"
+        "#!/bin/sh\nread request || exit 1\nprintf '%s\\n' '{bootstrap}'\nread request || exit 1\nprintf '%s\\n' '{catalog}'\nread request || exit 1\nprintf '%s\\n' \"$request\" > \"$STS2_GATEWAY_TOKEN\" || exit 1\ncat \"$STS2_GATEWAY_ADDR\" || exit 1\nprintf '\\n'\nif read extra; then printf '%s\\n' \"$extra\" > \"$STS2_GATEWAY_TOKEN\"; fi\n"
     );
     fs::write(&path, script).map_err(|error| error.to_string())?;
     fs::write(&response_path, response).map_err(|error| error.to_string())?;
@@ -147,9 +156,25 @@ fn map_profile_reads_a_complete_near_bound_response_from_mcp_stdout() -> Result<
     let result = snapshot(&config, 1);
     let cleanup = fs::remove_file(&path);
     let response_cleanup = fs::remove_file(&response_path);
+    let request = fs::read_to_string(&request_path).map_err(|error| error.to_string())?;
+    let request_cleanup = fs::remove_file(&request_path);
     let value = result?;
     cleanup.map_err(|error| error.to_string())?;
     response_cleanup.map_err(|error| error.to_string())?;
+    request_cleanup.map_err(|error| error.to_string())?;
+    let request: Value = serde_json::from_str(&request).map_err(|error| error.to_string())?;
+    assert_eq!(request["method"], "tools/call");
+    assert_eq!(request["params"]["name"], "sts2.map_snapshot");
+    assert_eq!(
+        request["params"]["arguments"],
+        json!({
+            "instance_id":"instance-1",
+            "mcp_session_id":"mcp-session-1",
+            "lease_id":"lease-1",
+            "lease_epoch":1,
+            "generation":1
+        })
+    );
     assert_eq!(value["generation"], 1);
     assert_eq!(value["snapshot"]["state_id"], "state-1");
     assert_eq!(
@@ -169,7 +194,7 @@ fn map_profile_reads_the_real_mcp_binary_before_exo_serialization() -> Result<()
     let address = listener.local_addr().map_err(|error| error.to_string())?;
     let mut config = config_for_script(Path::new(&mcp_binary), "placeholder");
     config.gateway_address = address.to_string();
-    let (frame, snapshot_bytes) = map_response(&config)?;
+    let (frame, snapshot_bytes, message_bytes) = map_response(&config)?;
     let frame: Value = serde_json::from_str(&frame).map_err(|error| error.to_string())?;
     let expected: Value = frame
         .get("result")
@@ -190,6 +215,7 @@ fn map_profile_reads_the_real_mcp_binary_before_exo_serialization() -> Result<()
         .ok_or_else(|| String::from("near-bound map fixture omitted content"))?
         .to_owned();
     assert!(snapshot_bytes <= 256 * 1024);
+    assert!(message_bytes <= 256 * 1024);
     assert!(body.len() <= 256 * 1024);
     assert!(body.len() > 256 * 1024 - 4096);
     eprintln!(
@@ -215,6 +241,68 @@ fn map_profile_reads_the_real_mcp_binary_before_exo_serialization() -> Result<()
         value["snapshot"]["edges"].as_array().map(Vec::len),
         Some(879)
     );
+    Ok(())
+}
+
+#[test]
+fn locked_decoder_rejects_malformed_duplicate_oversize_and_wrong_identity_messages()
+-> Result<(), String> {
+    let config = config_for_script(Path::new("unused"), "placeholder");
+    let (text, _) = map_message_text(&config)?;
+    let valid = decode_response_text(&text, &config, 1)?;
+    assert_eq!(valid["generation"], 1);
+    assert_eq!(valid["session_id"], config.session_id);
+
+    assert!(decode_response_text("{", &config, 1).is_err());
+    let duplicate = text.replacen("\"generation\":1,", "\"generation\":1,\"generation\":1,", 1);
+    assert!(decode_response_text(&duplicate, &config, 1).is_err());
+    assert!(decode_response_text(&" ".repeat(256 * 1024 + 1), &config, 1).is_err());
+
+    let base: Value = serde_json::from_str(&text).map_err(|error| error.to_string())?;
+    for (field, wrong_value) in [
+        ("correlation_id", json!("4")),
+        ("instance_id", json!("other-instance")),
+        // Request authority carries the MCP session; response identity remains the gateway one.
+        ("session_id", json!(config.mcp_session_id)),
+        ("lease_id", json!("other-lease")),
+        ("lease_epoch", json!(2)),
+        ("generation", json!(2)),
+    ] {
+        let mut wrong = base.clone();
+        wrong[field] = wrong_value;
+        let wrong = serde_json::to_string(&wrong).map_err(|error| error.to_string())?;
+        assert!(
+            decode_response_text(&wrong, &config, 1).is_err(),
+            "the map response must reject a changed {field}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn locked_decoder_rejects_wrong_shape_unknown_fields_and_invalid_graphs() -> Result<(), String> {
+    let config = config_for_script(Path::new("unused"), "placeholder");
+    let (text, _) = map_message_text(&config)?;
+    let base: Value = serde_json::from_str(&text).map_err(|error| error.to_string())?;
+
+    let mut missing_timeout = base.clone();
+    if let Some(object) = missing_timeout.as_object_mut() {
+        object.remove("timeout");
+    }
+    let missing_timeout =
+        serde_json::to_string(&missing_timeout).map_err(|error| error.to_string())?;
+    assert!(decode_response_text(&missing_timeout, &config, 1).is_err());
+
+    let mut unknown_field = base.clone();
+    unknown_field["caller_url"] = json!("https://example.invalid");
+    let unknown_field = serde_json::to_string(&unknown_field).map_err(|error| error.to_string())?;
+    assert!(decode_response_text(&unknown_field, &config, 1).is_err());
+
+    let mut duplicate_node = base;
+    duplicate_node["snapshot"]["nodes"][1]["id"] = json!("start");
+    let duplicate_node =
+        serde_json::to_string(&duplicate_node).map_err(|error| error.to_string())?;
+    assert!(decode_response_text(&duplicate_node, &config, 1).is_err());
     Ok(())
 }
 

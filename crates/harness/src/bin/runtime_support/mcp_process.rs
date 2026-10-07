@@ -31,6 +31,7 @@ pub(super) struct McpProcess {
     output: Option<BufReader<ChildStdout>>,
     timeout: Duration,
     max_response_bytes: usize,
+    profile_deadline: Option<Instant>,
     closed: bool,
 }
 
@@ -70,6 +71,21 @@ impl McpProcess {
             command.env("STS2_RECOVERY_TOKEN", token);
         }
         Self::spawn_command_with_response_limit(command, EXCHANGE_TIMEOUT, max_response_bytes)
+    }
+
+    pub(super) fn spawn_profile_with_deadline(
+        config: &RuntimeConfig,
+        profile: &str,
+        deadline: Instant,
+    ) -> Result<Self, String> {
+        if profile != "runtime-map-v1" {
+            return Err(String::from(
+                "an absolute profile deadline is supported only for runtime-map-v1",
+            ));
+        }
+        let mut process = Self::spawn_profile(config, profile)?;
+        process.profile_deadline = Some(deadline);
+        Ok(process)
     }
 
     pub(super) fn spawn_recovery(
@@ -178,6 +194,7 @@ impl McpProcess {
             output,
             timeout,
             max_response_bytes,
+            profile_deadline: None,
             closed: false,
         })
     }
