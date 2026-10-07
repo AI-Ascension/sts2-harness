@@ -11,6 +11,8 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
 
 ## Unreleased
 
+- **Workflow seed support gains a v2 discovery catalog.** Authenticated clients can inspect structural durable support and readiness hints, while the additional structural mode gate runs after owner revalidation for new Missing submissions. The v1 catalog and v2 request shapes remain unchanged; source/component evidence does not establish native setup or seed settlement, deployment, or release. Refs #103.
+
 - **Lifecycle process-recovery tests cover three synthetic crash cuts.** A child creates its initial owner and reaches the requested cut before termination; the parent reopens only afterward to check held or exact-result recovery without a second synthetic effect. The added cut stops after the possible-write journal and one fsynced synthetic effect attempt, before a handle or response receipt is delivered. This test-fixture correction does not change production behavior. Refs #142.
 
 - **The served workflow consumes its admitted decision profile at Exo dispatch.** Enveloped mode advertises Available only for validated, inspected `decision.live.v1`; unpinned or raw-wire descriptors remain Unsupported. Explicit `STS2_EXO_ADMISSION=legacy` retains the previous no-catalog provider path and exposes no inspected profile catalog.
