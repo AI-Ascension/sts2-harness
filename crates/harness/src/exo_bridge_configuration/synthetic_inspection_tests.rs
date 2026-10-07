@@ -2,11 +2,12 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::exo_bridge_configuration::Configuration;
 use crate::{EXO_CONTRACT_VERSION, EXO_SOURCE_REVISION, ExoProcessConfig, sha256_hex};
 
 use super::{
-    Configuration, Loaded, PrivateStateProfile, SyntheticInspectionError,
-    SyntheticLoopbackInspection, canonical_regular_file, launch_arguments,
+    Loaded, PrivateStateProfile, SyntheticInspectionError, SyntheticLoopbackInspection,
+    canonical_regular_file, launch_arguments,
 };
 
 struct FixtureRoot(PathBuf);
@@ -178,7 +179,7 @@ fn fake_loaded_structural_fixture_binds_digest_package_route_and_private_policy(
 -> Result<(), String> {
     let root = FixtureRoot::new("loaded")?;
     let fixture = loaded_fixture(root.path(), "http://127.0.0.1:4319")?;
-    let inspection = inspect_fixture(fixture)?;
+    let inspection = inspect_fixture(fixture).map_err(|error| error.to_string())?;
     let (process, identity, _) = inspection.into_parts();
     assert_eq!(process.arguments()[0], "--synthetic");
     assert!(identity.is_complete());

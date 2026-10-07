@@ -107,7 +107,7 @@ fn plan(
 fn plan_binds_all_identity_axes_and_builds_only_the_concrete_process_transport()
 -> Result<(), String> {
     let (descriptor, trusted, identity) = configuration()?;
-    let plan = plan(&descriptor, &trusted, identity)?;
+    let plan = plan(&descriptor, &trusted, identity).map_err(|error| error.to_string())?;
     assert_eq!(
         plan.report.identity.endpoint.as_deref(),
         Some("http://127.0.0.1:4319")

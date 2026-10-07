@@ -113,7 +113,7 @@ fn strict_envelope_forwards_one_correlated_request_and_returns_only_its_decision
     let (mut transport, calls) = strict_transport(response(decision.clone())?, false)?;
     let output = transport
         .exchange(&request, 4096, 1000)
-        .map_err(|error| format!("exchange refused: {error}"))?;
+        .map_err(|error| format!("exchange refused: {error:?}"))?;
     let parsed: Value = serde_json::from_slice(&output).map_err(|error| error.to_string())?;
     assert_eq!(parsed, decision);
     let calls = calls.borrow();
@@ -148,10 +148,10 @@ fn close_remains_idempotent_on_the_shared_fence() -> Result<(), String> {
     let (mut transport, calls) = strict_transport(Vec::new(), false)?;
     transport
         .close()
-        .map_err(|error| format!("close refused: {error}"))?;
+        .map_err(|error| format!("close refused: {error:?}"))?;
     transport
         .close()
-        .map_err(|error| format!("repeat close refused: {error}"))?;
+        .map_err(|error| format!("repeat close refused: {error:?}"))?;
     assert_eq!(calls.borrow().closes, 1);
     Ok(())
 }
@@ -190,7 +190,7 @@ fn illegal_decision_action_and_wrong_correlation_are_refused_after_one_exchange(
     let (mut valid_transport, valid_calls) = strict_transport(valid_response.clone(), false)?;
     let accepted = valid_transport
         .exchange(&request, 4096, 1000)
-        .map_err(|error| format!("valid baseline response refused: {error}"))?;
+        .map_err(|error| format!("valid baseline response refused: {error:?}"))?;
     let accepted: Value = serde_json::from_slice(&accepted).map_err(|error| error.to_string())?;
     assert_eq!(accepted, valid_decision);
     assert_eq!(valid_calls.borrow().requests.len(), 1);
