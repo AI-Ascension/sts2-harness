@@ -38,6 +38,23 @@ required_files = [
   "crates/harness/src/artifact.rs",
   "crates/harness/src/coordinator.rs",
   "crates/harness/src/coordinator/lifecycle.rs",
+  "docs/decisions/0086-durable-recipe-v2-map-invocation-receipts.md",
+  "crates/harness/src/execution/schema_recipe_invocation.rs",
+  "crates/harness/src/execution/types_recipe_invocation.rs",
+  "crates/harness/src/execution/store_recipe_invocation.rs",
+  "crates/harness/src/execution/store_recipe_invocation_queries.rs",
+  "crates/harness/src/execution/store_recipe_invocation_tests.rs",
+  "crates/harness/tests/support/workflow_store_recipe_migration.rs",
+  "crates/harness/src/execution_exports.rs",
+  "crates/harness/src/episode/runner_map_snapshot_order_tests.rs",
+  "crates/harness/src/episode/policy_router.rs",
+  "crates/harness/src/bin/runtime_support/runtime_v3_durable_recipe.rs",
+  "crates/harness/src/bin/runtime_support/runtime_v3_durable_recipe_causality_tests.rs",
+  "crates/harness/src/bin/runtime_support/runtime_v3_durable_recipe_owner_input_test_support.rs",
+  "crates/harness/src/bin/runtime_support/runtime_v3_durable_recipe_tests.rs",
+  "crates/harness/src/bin/runtime_support/runtime_v3_map_collection_error.rs",
+  "crates/harness/src/bin/runtime_support/runtime_v3_map_result_identity.rs",
+  "crates/harness/src/bin/runtime_support/runtime_v3_map_collection_error_tests.rs",
   "crates/harness/src/error.rs",
   "crates/harness/src/identity.rs",
   "crates/harness/src/lib.rs",
@@ -160,4 +177,3 @@ markdown_max = 700
 "crates/harness/src/provider_session/broker_snapshot.rs" = "The provider snapshot restore module keeps schema validation, owner rotation, tombstone ordering, unknown-turn recovery and metadata-only invariants together; its 369-line implementation remains below the hard limit."
 "crates/harness/src/provider_session/broker.rs" = "The provider-session registry keeps owner admission, lifecycle fencing, prepared-turn and history bookkeeping, and the allowlisted Debug projection of its own fields together so a single audited boundary owns every formatting path that could publish the owner authorization token or registry internals; its 333-line implementation remains below the hard limit."
 "crates/harness/src/provider_session/common.rs" = "The provider session common module keeps shared bounded constants, strict timestamp validation, digest helpers and expiry semantics together for every broker operation; its 339-line implementation remains below the hard limit."
-"crates/harness/src/lib.rs" = "The crate root aggregates the existing bounded modules and reexports the synthetic Exo admission API beside the existing public contract; its 307-line declaration set remains below the hard limit."

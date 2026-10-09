@@ -12,6 +12,15 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
 
 ## Unreleased
 
+- **Opt-in map context gains durable invocation receipts.** Schema 9 adds a bounded,
+  metadata-only table and preserves existing execution data when migrating schema 8.
+  The runtime records intent before the map read and binds the validated response to the
+  parser-accepted decision context before decision reuse or provider reservation. Unfinished
+  receipts refuse another read after restart; non-map decisions retain approved-reference
+  compatibility. Supplied-fact consistency does not attest authoritative owner provenance.
+  This component does not complete the broader recipe, Studio or native acceptance gates.
+  Refs #97; see [ADR 0086](docs/decisions/0086-durable-recipe-v2-map-invocation-receipts.md).
+
 - **Exact-artifact publication adds the unprivileged held-descriptor fallback.** The held unnamed
   descriptor first uses the successful `AT_EMPTY_PATH` route; only `ENOENT` selects the verified
   procfs descriptor fallback. Ordinary absent reads remain `Missing`; write, link, and sync
