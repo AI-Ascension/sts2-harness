@@ -110,6 +110,10 @@ impl SyntheticLoopbackInspection {
         (self.process, self.identity, self.private_state)
     }
 
+    pub(crate) fn inspected_identity(&self) -> &ExoIdentity {
+        &self.identity
+    }
+
     #[cfg(test)]
     pub(crate) fn structural_fixture(
         process: ExoProcessConfig,

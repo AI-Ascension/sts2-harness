@@ -14,6 +14,10 @@ mod run;
 #[cfg(target_os = "linux")]
 use std::io::{Read, Write};
 #[cfg(target_os = "linux")]
+use sts2_harness::ExoProcessConfig;
+#[cfg(target_os = "linux")]
+use sts2_harness::exo_bridge_configuration::SyntheticLoopbackInspection;
+#[cfg(target_os = "linux")]
 use sts2_harness::exo_lookup_process::ExoLookupProfile;
 #[cfg(target_os = "linux")]
 use sts2_harness::parse_bridge_request_envelope;
@@ -43,6 +47,12 @@ fn execute() -> Result<(), &'static str> {
     let [mode, path, rest @ ..] = args.as_slice() else {
         return Err("exo_bridge_arguments");
     };
+    if mode == "--synthetic-provider-capabilities" {
+        let [digest, instance_id] = rest else {
+            return Err("exo_bridge_arguments");
+        };
+        return describe_synthetic_provider_capabilities(path, digest, instance_id);
+    }
     if mode == "--provider-capabilities" {
         return describe_provider_capabilities(path, provider_capability_instance(rest)?);
     }
@@ -109,6 +119,33 @@ fn describe_provider_capabilities(path: &str, instance_id: &str) -> Result<(), &
     let bridge = std::env::current_exe().map_err(|_| "exo_bridge_package")?;
     let identity = loaded.inspected_identity(&bridge, instance_id)?;
     let capabilities = NativeCapabilities::reviewed_exo_one_shot(&identity)
+        .map_err(|_| "exo_bridge_provider_profile")?;
+    write_output(&serialize_provider_capabilities(&capabilities)?)
+}
+
+#[cfg(target_os = "linux")]
+fn describe_synthetic_provider_capabilities(
+    path: &str,
+    digest: &str,
+    instance_id: &str,
+) -> Result<(), &'static str> {
+    let loaded = config::load(path)?;
+    let executable = std::env::current_exe().map_err(|_| "exo_bridge_package")?;
+    let process = ExoProcessConfig::new(
+        executable.to_string_lossy().into_owned(),
+        vec![
+            String::from("--synthetic"),
+            path.to_owned(),
+            digest.to_owned(),
+        ],
+        None,
+        Vec::new(),
+    )
+    .map_err(|_| "exo_bridge_provider_profile")?;
+    let inspection =
+        SyntheticLoopbackInspection::inspect(process, &loaded.config.executor, instance_id)
+            .map_err(|_| "exo_bridge_provider_profile")?;
+    let capabilities = NativeCapabilities::reviewed_synthetic_exo_one_shot(&inspection)
         .map_err(|_| "exo_bridge_provider_profile")?;
     write_output(&serialize_provider_capabilities(&capabilities)?)
 }

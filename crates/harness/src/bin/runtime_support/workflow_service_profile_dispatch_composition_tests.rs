@@ -2,11 +2,11 @@
 
 #![allow(clippy::expect_used)]
 
+use super::super::super::runtime_v3_admission::RuntimeV3AdmissionMode;
 use super::*;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use sts2_harness::EpisodeRuntimePort;
-use sts2_harness::exo_admission::ExoAdmissionMode;
 use sts2_harness::management::{
     AuthContext, ExecutionMode, InferenceProfileCatalog, InferenceProfileState,
     LiveInferenceProfileCatalogPort, LiveProviderPolicyPort, LiveProviderSessionFactory,
@@ -135,7 +135,7 @@ fn unsupported_catalog() -> InferenceProfileCatalog {
 }
 
 fn served_factory(
-    mode: ExoAdmissionMode,
+    mode: RuntimeV3AdmissionMode,
     catalog: Arc<dyn LiveInferenceProfileCatalogPort>,
 ) -> (
     ProductionLiveWorkflowSessionFactory,
@@ -232,7 +232,7 @@ fn actor() -> AuthContext {
 fn explicit_legacy_served_factory_keeps_no_catalog_and_admits_the_existing_profile_reference() {
     let catalog = Arc::new(StaticCatalog(unsupported_catalog()));
     let (factory, effects, provider_opens, provider_preflights) =
-        served_factory(ExoAdmissionMode::Legacy, catalog);
+        served_factory(RuntimeV3AdmissionMode::Legacy, catalog);
     let actor = actor();
     assert_eq!(
         factory
@@ -257,7 +257,7 @@ fn explicit_legacy_served_factory_keeps_no_catalog_and_admits_the_existing_profi
 fn enveloped_served_factory_refuses_unsupported_profile_before_runtime_or_provider_effects() {
     let catalog = Arc::new(StaticCatalog(unsupported_catalog()));
     let (factory, effects, provider_opens, provider_preflights) =
-        served_factory(ExoAdmissionMode::Enveloped, catalog);
+        served_factory(RuntimeV3AdmissionMode::Enveloped, catalog);
     let actor = actor();
     let served = factory
         .inference_profile_catalog(&actor)
@@ -293,37 +293,37 @@ fn the_actual_legacy_provider_builder_accepts_only_legacy_settings() {
 fn frozen_mode_rejects_environment_or_settings_mode_changes_before_fallback() {
     assert!(
         provider::validate_admission_mode(
-            ExoAdmissionMode::Legacy,
-            ExoAdmissionMode::Legacy,
-            Some(ExoAdmissionMode::Legacy),
-            ExoAdmissionMode::Legacy,
+            RuntimeV3AdmissionMode::Legacy,
+            RuntimeV3AdmissionMode::Legacy,
+            Some(RuntimeV3AdmissionMode::Legacy),
+            RuntimeV3AdmissionMode::Legacy,
         )
         .is_ok()
     );
     assert!(
         provider::validate_admission_mode(
-            ExoAdmissionMode::Legacy,
-            ExoAdmissionMode::Enveloped,
-            Some(ExoAdmissionMode::Enveloped),
-            ExoAdmissionMode::Legacy,
+            RuntimeV3AdmissionMode::Legacy,
+            RuntimeV3AdmissionMode::Enveloped,
+            Some(RuntimeV3AdmissionMode::Enveloped),
+            RuntimeV3AdmissionMode::Legacy,
         )
         .is_err()
     );
     assert!(
         provider::validate_admission_mode(
-            ExoAdmissionMode::Enveloped,
-            ExoAdmissionMode::Legacy,
-            Some(ExoAdmissionMode::Legacy),
-            ExoAdmissionMode::Enveloped,
+            RuntimeV3AdmissionMode::Enveloped,
+            RuntimeV3AdmissionMode::Legacy,
+            Some(RuntimeV3AdmissionMode::Legacy),
+            RuntimeV3AdmissionMode::Enveloped,
         )
         .is_err()
     );
     assert!(
         provider::validate_admission_mode(
-            ExoAdmissionMode::Enveloped,
-            ExoAdmissionMode::Enveloped,
-            Some(ExoAdmissionMode::Legacy),
-            ExoAdmissionMode::Enveloped,
+            RuntimeV3AdmissionMode::Enveloped,
+            RuntimeV3AdmissionMode::Enveloped,
+            Some(RuntimeV3AdmissionMode::Legacy),
+            RuntimeV3AdmissionMode::Enveloped,
         )
         .is_err()
     );

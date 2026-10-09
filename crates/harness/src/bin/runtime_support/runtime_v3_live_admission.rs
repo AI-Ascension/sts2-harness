@@ -15,9 +15,8 @@
 
 use std::sync::OnceLock;
 
-use sts2_harness::exo_admission::ExoAdmissionMode;
-
 use super::provider::ProviderKind;
+use super::runtime_v3_admission::RuntimeV3AdmissionMode;
 
 const LIVE_EPISODE: &str = "STS2_LIVE_EPISODE";
 
@@ -48,10 +47,15 @@ pub(crate) fn declared() -> Result<bool, String> {
 pub(crate) fn resolve(
     kind: Option<ProviderKind>,
     declared: bool,
-    admission: ExoAdmissionMode,
+    admission: RuntimeV3AdmissionMode,
 ) -> Result<LiveMode, String> {
     if !declared {
         return Ok(LiveMode::Standard);
+    }
+    if admission == RuntimeV3AdmissionMode::SyntheticEnvelope {
+        return Err(String::from(
+            "synthetic-envelope admission is unavailable for live episodes",
+        ));
     }
     let Some(kind) = kind else {
         return Err(format!(
@@ -64,7 +68,7 @@ pub(crate) fn resolve(
             kind.name()
         ));
     }
-    if kind.requires_reviewed_envelope() && admission != ExoAdmissionMode::Enveloped {
+    if kind.requires_reviewed_envelope() && admission != RuntimeV3AdmissionMode::Enveloped {
         return Err(format!(
             "provider kind {} is admitted for a live episode only through the reviewed envelope; the raw-wire acknowledgement does not inspect its capability descriptor",
             kind.name()

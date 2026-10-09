@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: MIT
 
-use sts2_harness::exo_admission::ExoRuntimeAdmission;
 use sts2_harness::{
     EXO_MAX_MAP_REQUEST_BYTES, EXO_MAX_STANDARD_REQUEST_BYTES, EXO_SOURCE_REVISION,
     EpisodeRunnerConfig, ExoConfig, ExoProcessConfig, RecoveryController, StabilityBarrier,
 };
 
 use super::config::RuntimeConfig;
-use super::runtime_v3_admission;
+use super::runtime_v3_admission::{self, RuntimeV3Admission, RuntimeV3AdmissionMode};
 use super::runtime_v3_lifecycle_config::{RuntimeLifecycleConfig, RuntimeLifecycleSecrets};
 
 const REVIEWED_EXO_REVISION: &str = EXO_SOURCE_REVISION;
@@ -38,7 +37,7 @@ pub(super) struct RuntimeV3Settings {
     pub(super) runner: EpisodeRunnerConfig,
     pub(super) exo: ExoConfig,
     pub(super) process: ExoProcessConfig,
-    pub(super) admission: ExoRuntimeAdmission,
+    pub(super) admission: RuntimeV3Admission,
     #[allow(dead_code)]
     pub(super) lifecycle: Option<(RuntimeLifecycleConfig, RuntimeLifecycleSecrets)>,
     pub(super) lookup_agent: Option<LookupAgentSettings>,
@@ -46,8 +45,22 @@ pub(super) struct RuntimeV3Settings {
 
 impl RuntimeV3Settings {
     pub(super) fn from_environment(config: &RuntimeConfig) -> Result<Self, String> {
+        let admission_mode = runtime_v3_admission::declared_mode()?;
+        let lookup_binding_enabled = config.lookup_binding_enabled()?;
+        if admission_mode == RuntimeV3AdmissionMode::SyntheticEnvelope {
+            let provider_kind = provider::declared()?;
+            let live_episode = live_admission::declared()?;
+            let lifecycle_configured = std::env::var_os("STS2_EXO_LIFECYCLE_CONFIG").is_some();
+            runtime_v3_admission::validate_synthetic_preconditions(
+                admission_mode,
+                provider_kind.map(provider::ProviderKind::name),
+                live_episode,
+                lifecycle_configured,
+                lookup_binding_enabled,
+            )?;
+        }
         let runner = runner_from_environment(config.map_context_enabled)?;
-        if config.lookup_binding_enabled()? {
+        if lookup_binding_enabled {
             return lookup::settings_from_environment(runner);
         }
         let (exo, live_mode) = exo_from_environment(config.map_context_enabled)?;
@@ -63,10 +76,16 @@ impl RuntimeV3Settings {
         // configuration is assembled first. Lifecycle capability promotion is deferred until
         // its durable receipt adapter has been built.
         let admission = runtime_v3_admission::from_environment(
+            admission_mode,
             &process,
             config.map_context_enabled,
             &config.instance_id,
-            lifecycle.is_some(),
+            runtime_v3_admission::RuntimeV3SyntheticGuard {
+                provider_kind: provider::declared()?.map(provider::ProviderKind::name),
+                live_episode: live_mode == live_admission::LiveMode::LiveEpisode,
+                lifecycle_enabled: lifecycle.is_some(),
+                lookup_binding_enabled,
+            },
         )?;
         // Installed last: a run refused above cannot have already admitted live behavior.
         live_admission::install(live_mode)?;
@@ -84,8 +103,15 @@ impl RuntimeV3Settings {
 fn verify_revision(revision: &str) -> Result<live_admission::LiveMode, String> {
     let kind = provider::declared()?;
     let live_episode = live_admission::declared()?;
-    let live_mode =
-        live_admission::resolve(kind, live_episode, runtime_v3_admission::declared_mode()?)?;
+    let admission_mode = runtime_v3_admission::declared_mode()?;
+    runtime_v3_admission::validate_synthetic_preconditions(
+        admission_mode,
+        kind.map(provider::ProviderKind::name),
+        live_episode,
+        false,
+        false,
+    )?;
+    let live_mode = live_admission::resolve(kind, live_episode, admission_mode)?;
     let combat_demo = optional("STS2_COMBAT_DEMO")?.as_deref() == Some("true");
     let campaign_episode = optional("STS2_CAMPAIGN_EPISODE")?.as_deref() == Some("true");
     let bounded_mode = bounded_mode_named(combat_demo, live_episode, campaign_episode)?;

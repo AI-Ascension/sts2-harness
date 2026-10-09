@@ -16,18 +16,20 @@ use sts2_harness::management::{
 };
 use sts2_harness::provider_session::NativeCapabilities;
 
+use super::runtime_v3_admission::RuntimeV3AdmissionMode;
 use super::{RuntimeConfig, runtime_v3_settings};
-use sts2_harness::exo_admission::ExoAdmissionMode;
 
-/// The served factory publishes the catalog only in the frozen envelope mode.
+/// The served factory publishes the catalog only for a frozen profile-capable admission mode.
 pub(super) fn attach_profile_catalog(
     factory: ProductionLiveWorkflowSessionFactory,
-    mode: ExoAdmissionMode,
+    mode: RuntimeV3AdmissionMode,
     catalog: Arc<dyn LiveInferenceProfileCatalogPort>,
 ) -> ProductionLiveWorkflowSessionFactory {
     match mode {
-        ExoAdmissionMode::Enveloped => factory.with_inference_profile_catalog(catalog),
-        ExoAdmissionMode::Legacy => factory,
+        RuntimeV3AdmissionMode::Enveloped | RuntimeV3AdmissionMode::SyntheticEnvelope => {
+            factory.with_inference_profile_catalog(catalog)
+        }
+        RuntimeV3AdmissionMode::Legacy => factory,
     }
 }
 

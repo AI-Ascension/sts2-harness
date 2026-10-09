@@ -187,12 +187,14 @@ impl Fixture {
                 "/var/lib/sts2-harness/lifecycle-offline-test",
             ),
         };
-        let admission = ExoRuntimeAdmission::Enveloped(Box::new(ExoAdmissionPlan::new(
-            trusted,
-            identity,
-            MODEL_EXECUTION_ID.to_owned(),
-            REQUEST_ID.to_owned(),
-            TURN_ID.to_owned(),
+        let admission = RuntimeV3Admission::Ordinary(ExoRuntimeAdmission::Enveloped(Box::new(
+            ExoAdmissionPlan::new(
+                trusted,
+                identity,
+                MODEL_EXECUTION_ID.to_owned(),
+                REQUEST_ID.to_owned(),
+                TURN_ID.to_owned(),
+            ),
         )));
         let (lifecycle, secrets) =
             RuntimeLifecycleConfig::bootstrap_test(root.join("journal"), root.join("policy.bin"));

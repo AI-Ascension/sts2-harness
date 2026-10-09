@@ -3,7 +3,6 @@
 //! Trusted provider configuration and exact profile dispatch for the served Exo factory.
 
 use sts2_harness::ExoConfig;
-use sts2_harness::exo_admission::ExoRuntimeAdmission;
 use sts2_harness::management::{
     AdmittedInferenceProfileBinding, AdmittedInferenceProfileDispatch,
     INFERENCE_PROFILE_CATALOG_SCHEMA_VERSION, INFERENCE_PROFILE_SCHEMA_VERSION,
@@ -14,6 +13,7 @@ use sts2_harness::management::{
 };
 use sts2_harness::provider_session::NativeCapabilities;
 
+use super::runtime_v3_admission::RuntimeV3Admission;
 use super::{RuntimeConfig, runtime_v3, runtime_v3_admission, runtime_v3_settings};
 use runtime_v3_settings::RuntimeV3Settings;
 #[path = "workflow_service_profile_identity.rs"]
@@ -190,11 +190,16 @@ pub(super) fn prepare_provider(
         profiles.bindings(),
         &current_catalog,
     )?;
-    let ExoRuntimeAdmission::Enveloped(_) = &settings.admission else {
+    if !matches!(
+        &settings.admission,
+        RuntimeV3Admission::Ordinary(sts2_harness::exo_admission::ExoRuntimeAdmission::Enveloped(
+            _
+        )) | RuntimeV3Admission::Synthetic(_)
+    ) {
         return Err(unsupported(
-            "the selected Exo route is not envelope-admitted",
+            "the selected Exo route does not support reviewed profile dispatch",
         ));
-    };
+    }
     Ok(Box::new(ProfiledExoAdmission {
         process: settings.process,
         config: settings.exo,

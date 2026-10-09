@@ -50,7 +50,9 @@ pub(super) fn settings_from_environment(
         runner,
         exo,
         process,
-        admission: ExoRuntimeAdmission::legacy(),
+        admission: runtime_v3_admission::RuntimeV3Admission::Ordinary(
+            sts2_harness::exo_admission::ExoRuntimeAdmission::legacy(),
+        ),
         lifecycle: None,
         lookup_agent: Some(LookupAgentSettings {
             revision,

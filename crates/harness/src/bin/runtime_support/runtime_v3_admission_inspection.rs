@@ -1,5 +1,89 @@
 // SPDX-License-Identifier: MIT
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum RuntimeV3AdmissionMode {
+    Enveloped,
+    Legacy,
+    SyntheticEnvelope,
+}
+
+impl RuntimeV3AdmissionMode {
+    pub(super) const fn supports_profiles(self) -> bool {
+        matches!(self, Self::Enveloped | Self::SyntheticEnvelope)
+    }
+}
+
+pub(super) struct RuntimeV3SyntheticGuard<'a> {
+    pub(super) provider_kind: Option<&'a str>,
+    pub(super) live_episode: bool,
+    pub(super) lifecycle_enabled: bool,
+    pub(super) lookup_binding_enabled: bool,
+}
+
+pub(super) enum RuntimeV3Admission {
+    Ordinary(ExoRuntimeAdmission),
+    Synthetic(Box<SyntheticRuntimeAdmission>),
+}
+
+pub(super) enum RuntimeV3Transport<T: ExoTransport> {
+    Ordinary(AdmittedExoRuntimeTransport<T>),
+    Synthetic(Box<SyntheticExoAdmittedTransport>),
+}
+
+pub(super) type RuntimeV3AdmittedTransport = RuntimeV3Transport<ExoProcessTransport>;
+
+impl<T: ExoTransport> ExoTransport for RuntimeV3Transport<T> {
+    fn exchange(
+        &mut self,
+        request: &[u8],
+        max_response_bytes: usize,
+        timeout_millis: u32,
+    ) -> Result<Vec<u8>, ExoTransportError> {
+        match self {
+            Self::Ordinary(transport) => {
+                transport.exchange(request, max_response_bytes, timeout_millis)
+            }
+            Self::Synthetic(transport) => {
+                transport.exchange(request, max_response_bytes, timeout_millis)
+            }
+        }
+    }
+
+    fn close(&mut self) -> Result<(), ExoTransportError> {
+        match self {
+            Self::Ordinary(transport) => transport.close(),
+            Self::Synthetic(transport) => transport.close(),
+        }
+    }
+}
+
+impl RuntimeV3Admission {
+    pub(super) fn mode(&self) -> RuntimeV3AdmissionMode {
+        match self {
+            Self::Ordinary(admission) => match admission.mode() {
+                ExoAdmissionMode::Enveloped => RuntimeV3AdmissionMode::Enveloped,
+                ExoAdmissionMode::Legacy => RuntimeV3AdmissionMode::Legacy,
+            },
+            Self::Synthetic(_) => RuntimeV3AdmissionMode::SyntheticEnvelope,
+        }
+    }
+
+    pub(super) fn admit(
+        &self,
+        process: ExoProcessConfig,
+    ) -> Result<RuntimeV3AdmittedTransport, String> {
+        match self {
+            Self::Ordinary(admission) => admission
+                .admit(ExoProcessTransport::new(process))
+                .map(RuntimeV3AdmittedTransport::Ordinary)
+                .map_err(String::from),
+            Self::Synthetic(admission) => admission
+                .admit_transport(process)
+                .map(|transport| RuntimeV3AdmittedTransport::Synthetic(Box::new(transport))),
+        }
+    }
+}
+
 struct InspectedDeployment {
     identity: ExoIdentity,
     private_state: sts2_harness::exo_bridge_configuration::PrivateStateProfile,
@@ -72,12 +156,10 @@ fn inspected_artifacts(
 /// Admits the runtime bridge for the assembled deployment. The runtime takes its transport only
 /// here, so it cannot dispatch one that the reviewed preflight has not admitted.
 pub(super) fn admit(
-    admission: &ExoRuntimeAdmission,
+    admission: &RuntimeV3Admission,
     process: ExoProcessConfig,
-) -> Result<AdmittedExoRuntimeTransport<ExoProcessTransport>, String> {
-    admission
-        .admit(ExoProcessTransport::new(process))
-        .map_err(String::from)
+) -> Result<RuntimeV3AdmittedTransport, String> {
+    admission.admit(process)
 }
 
 fn private_state_root() -> Result<String, String> {
@@ -86,115 +168,5 @@ fn private_state_root() -> Result<String, String> {
 }
 
 #[cfg(test)]
-mod tests {
-    use std::path::{Path, PathBuf};
-
-    use super::{ExoAdmissionMode, ExoInspectedArtifacts, inspected_artifacts, selected_mode};
-
-    fn scratch_directory(name: &str) -> Result<PathBuf, String> {
-        let path =
-            std::env::temp_dir().join(format!("sts2-l139-package-{}-{name}", std::process::id()));
-        std::fs::create_dir_all(&path).map_err(|error| error.to_string())?;
-        Ok(path)
-    }
-
-    fn path_text(path: &Path) -> Result<&str, String> {
-        path.to_str()
-            .ok_or_else(|| format!("fixture path {path:?} is not valid UTF-8"))
-    }
-
-    fn write_bridge(root: &Path) -> Result<PathBuf, String> {
-        let bridge = root.join("bridge-probe");
-        std::fs::write(&bridge, b"bridge bytes").map_err(|error| error.to_string())?;
-        Ok(bridge)
-    }
-
-    /// The package axis is the hash of the bytes at the locator, never of the operator's declared
-    /// pin, so swapping the located artifact changes the inspected identity while the pin stays put.
-    #[test]
-    fn the_inspected_package_digest_is_the_hash_of_the_located_bytes() -> Result<(), String> {
-        let root = scratch_directory("identity")?;
-        let bridge = write_bridge(&root)?;
-        let package = root.join("package-artifact");
-        std::fs::write(&package, b"package bytes").map_err(|error| error.to_string())?;
-
-        let inspected = inspected_artifacts(path_text(&bridge)?, path_text(&package)?)?;
-        assert_eq!(
-            inspected.package.as_deref().map(sts2_harness::sha256_hex),
-            Some(sts2_harness::sha256_hex(b"package bytes"))
-        );
-        assert_eq!(
-            inspected.bridge.as_deref().map(sts2_harness::sha256_hex),
-            Some(sts2_harness::sha256_hex(b"bridge bytes"))
-        );
-
-        std::fs::write(&package, b"swapped package bytes").map_err(|error| error.to_string())?;
-        let swapped = inspected_artifacts(path_text(&bridge)?, path_text(&package)?)?;
-        assert_ne!(
-            swapped.identity().package_digest,
-            inspected.identity().package_digest
-        );
-        assert_eq!(
-            swapped.identity().bridge_digest,
-            inspected.identity().bridge_digest
-        );
-        std::fs::remove_dir_all(&root).map_err(|error| error.to_string())?;
-        Ok(())
-    }
-
-    /// The inspection read is bounded, so an oversized package artifact is a fail-closed error rather
-    /// than an unbounded allocation. The fixture is sparse, so it costs no disk space.
-    #[test]
-    fn an_oversized_package_artifact_is_a_bounded_error() -> Result<(), String> {
-        let root = scratch_directory("bound")?;
-        let bridge = write_bridge(&root)?;
-        let package = root.join("oversized-package-artifact");
-        std::fs::File::create(&package)
-            .and_then(|file| file.set_len(ExoInspectedArtifacts::MAX_INSPECTED_ARTIFACT_BYTES + 1))
-            .map_err(|error| error.to_string())?;
-
-        let error = inspected_artifacts(path_text(&bridge)?, path_text(&package)?)
-            .err()
-            .ok_or("an oversized package artifact must refuse")?;
-        assert!(
-            error.contains("package artifact"),
-            "the bound must name the package artifact, got {error}"
-        );
-        std::fs::remove_dir_all(&root).map_err(|error| error.to_string())?;
-        Ok(())
-    }
-
-    /// A locator that names nothing on disk is refused rather than admitted with an unbound package
-    /// axis.
-    #[test]
-    fn a_package_locator_that_names_no_file_is_refused() -> Result<(), String> {
-        let root = scratch_directory("absent")?;
-        let bridge = write_bridge(&root)?;
-
-        let error = inspected_artifacts(path_text(&bridge)?, path_text(&root.join("absent"))?)
-            .err()
-            .ok_or("an absent package artifact must refuse")?;
-        assert!(
-            error.contains("package artifact"),
-            "the refusal must name the package artifact, got {error}"
-        );
-        std::fs::remove_dir_all(&root).map_err(|error| error.to_string())?;
-        Ok(())
-    }
-
-    #[test]
-    fn admission_mode_defaults_to_the_reviewed_envelope_and_rejects_unknown_values() {
-        assert_eq!(selected_mode(None), Ok(ExoAdmissionMode::Enveloped));
-        assert_eq!(
-            selected_mode(Some("envelope")),
-            Ok(ExoAdmissionMode::Enveloped)
-        );
-        assert_eq!(selected_mode(Some("legacy")), Ok(ExoAdmissionMode::Legacy));
-        for value in ["", "Envelope", "ENVELOPE", "legacy ", "admitted", "raw"] {
-            assert!(
-                selected_mode(Some(value)).is_err(),
-                "{value:?} must be rejected"
-            );
-        }
-    }
-}
+#[path = "runtime_v3_admission_inspection_tests.rs"]
+mod inspection_tests;
