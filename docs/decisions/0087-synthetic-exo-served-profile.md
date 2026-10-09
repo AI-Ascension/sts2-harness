@@ -14,7 +14,9 @@ identity and preflight remain the ordinary route and must not be weakened for a 
 Add the exact `STS2_EXO_ADMISSION=synthetic-envelope` selector for provider kind `exo`. Absence and
 `envelope` retain ordinary reviewed admission; explicit `legacy` retains its existing raw-wire
 acknowledgement; all other values refuse. Synthetic selection refuses Harness lookup, lifecycle
-configuration and live-episode admission before runtime side effects.
+configuration and live-episode admission before bridge, provider, model or game execution. The
+served service may initialize local owner/storage services before these request-side refusal checks;
+this source increment does not establish refusal before all service startup I/O.
 
 Derive schema-only `NativeCapabilities` only from an opaque `SyntheticLoopbackInspection` or
 `SyntheticExoAdmissionPlan`. The descriptor binds the full inspected identity and checked-in
