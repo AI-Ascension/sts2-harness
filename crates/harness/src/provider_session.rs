@@ -32,6 +32,10 @@ pub use state_store::{
 pub use transport::{NativeTransportError, OwnedNativeTransport};
 pub use types::*;
 
+#[cfg(test)]
+#[path = "provider_session/exo_synthetic_one_shot_profile_tests.rs"]
+mod synthetic_profile_tests;
+
 fn digest_scope(scope: &SessionScope) -> String {
     let bytes = serde_json::to_vec(scope).unwrap_or_default();
     crate::sha256_hex(bytes)

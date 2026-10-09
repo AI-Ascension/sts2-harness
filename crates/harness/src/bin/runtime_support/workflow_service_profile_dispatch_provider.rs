@@ -2,11 +2,12 @@
 
 //! Served provider factory; profile admission finishes before runtime effects.
 
+use super::super::runtime_v3_admission::RuntimeV3AdmissionMode;
 use super::super::*;
 use super::*;
 
 pub(crate) struct Provider {
-    pub(crate) admission_mode: sts2_harness::exo_admission::ExoAdmissionMode,
+    pub(crate) admission_mode: RuntimeV3AdmissionMode,
     pub(crate) provider_capabilities: NativeCapabilities,
 }
 
@@ -18,10 +19,10 @@ fn admission_mode_error() -> ManagementError {
 }
 
 pub(super) fn validate_admission_mode(
-    frozen: sts2_harness::exo_admission::ExoAdmissionMode,
-    selected: sts2_harness::exo_admission::ExoAdmissionMode,
-    settings: Option<sts2_harness::exo_admission::ExoAdmissionMode>,
-    expected: sts2_harness::exo_admission::ExoAdmissionMode,
+    frozen: RuntimeV3AdmissionMode,
+    selected: RuntimeV3AdmissionMode,
+    settings: Option<RuntimeV3AdmissionMode>,
+    expected: RuntimeV3AdmissionMode,
 ) -> Result<(), ManagementError> {
     if frozen != expected
         || selected != expected
@@ -35,7 +36,7 @@ pub(super) fn validate_admission_mode(
 pub(super) fn legacy_decision_source(
     settings: runtime_v3_settings::RuntimeV3Settings,
 ) -> Result<Box<dyn sts2_harness::DecisionSource + Send>, ManagementError> {
-    if settings.admission.mode() != sts2_harness::exo_admission::ExoAdmissionMode::Legacy {
+    if settings.admission.mode() != RuntimeV3AdmissionMode::Legacy {
         return Err(admission_mode_error());
     }
     let transport = runtime_v3_admission::admit(&settings.admission, settings.process)
@@ -59,7 +60,7 @@ impl LiveProviderSessionFactory for Provider {
             self.admission_mode,
             selected_mode,
             None,
-            sts2_harness::exo_admission::ExoAdmissionMode::Legacy,
+            RuntimeV3AdmissionMode::Legacy,
         )?;
         let config = RuntimeConfig::from_environment()
             .map_err(|error| ManagementError::unavailable("runtime_configuration", error))?;
@@ -69,7 +70,7 @@ impl LiveProviderSessionFactory for Provider {
             self.admission_mode,
             selected_mode,
             Some(settings.admission.mode()),
-            sts2_harness::exo_admission::ExoAdmissionMode::Legacy,
+            RuntimeV3AdmissionMode::Legacy,
         )?;
         legacy_decision_source(settings)
     }
@@ -86,12 +87,10 @@ impl LiveProviderSessionFactory for Provider {
     {
         let selected_mode =
             runtime_v3_admission::declared_mode().map_err(|_| admission_mode_error())?;
-        validate_admission_mode(
-            self.admission_mode,
-            selected_mode,
-            None,
-            sts2_harness::exo_admission::ExoAdmissionMode::Enveloped,
-        )?;
+        if !selected_mode.supports_profiles() {
+            return Err(admission_mode_error());
+        }
+        validate_admission_mode(self.admission_mode, selected_mode, None, selected_mode)?;
         let config = RuntimeConfig::from_environment()
             .map_err(|error| ManagementError::unavailable("runtime_configuration", error))?;
         if config.instance_id != request.instance_id {
@@ -106,7 +105,7 @@ impl LiveProviderSessionFactory for Provider {
             self.admission_mode,
             selected_mode,
             Some(settings.admission.mode()),
-            sts2_harness::exo_admission::ExoAdmissionMode::Enveloped,
+            selected_mode,
         )?;
         prepare_provider(
             &self.provider_capabilities,

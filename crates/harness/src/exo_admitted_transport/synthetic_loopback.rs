@@ -78,6 +78,12 @@ impl SyntheticExoAdmissionPlan {
         })
     }
 
+    /// Returns the immutable identity retained from opaque synthetic inspection.
+    #[must_use]
+    pub fn inspected_identity(&self) -> &ExoIdentity {
+        &self.report.identity
+    }
+
     /// Builds the concrete process transport without starting a child or contacting a provider.
     #[must_use]
     pub fn into_transport(self) -> SyntheticExoAdmittedTransport {

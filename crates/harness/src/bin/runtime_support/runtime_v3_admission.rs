@@ -2,11 +2,10 @@
 
 //! Admission settings for the runtime-v3 Exo transport seam.
 //!
-//! `STS2_EXO_ADMISSION` selects the reviewed envelope path (`envelope`, the fail-closed default)
-//! or the explicit raw-wire acknowledgement (`legacy`). The envelope path requires the complete
-//! operator-trusted deployment identity, so a missing, malformed, unreviewed or unverified
-//! deployment refuses the run while the runtime is still assembling settings, before it opens a
-//! durable store, a gateway connection, an MCP session or a provider.
+//! `STS2_EXO_ADMISSION` selects the reviewed envelope path (`envelope`, the fail-closed default),
+//! explicit raw-wire acknowledgement (`legacy`), or the guarded synthetic-only envelope.
+//! Synthetic admission stays separate from production HTTPS preflight and refuses lookup,
+//! lifecycle, and live-episode composition before runtime effects.
 //!
 //! The envelope path also *inspects* the artifact bytes this seam can locate. Two artifacts are read
 //! whole and bounded and hashed into the inspected identity: the exact bytes of the bridge executable
@@ -30,40 +29,104 @@ use sts2_harness::exo_admission::{
 use sts2_harness::exo_bridge_configuration::PrivateStateProfile;
 use sts2_harness::{
     EXO_CONTRACT_VERSION, ExoContextMode, ExoIdentity, ExoLimits, ExoPlatform, ExoProcessConfig,
-    ExoProcessTransport, ExoProfile, ExoRestrictedProfile, ExoRuntime, ExoTrustedConfiguration,
+    ExoProcessTransport, ExoProfile, ExoRestrictedProfile, ExoRuntime, ExoTransport,
+    ExoTransportError, ExoTrustedConfiguration, SyntheticExoAdmittedTransport,
 };
 
 use super::runtime_v3_settings::{optional, required};
+
+#[path = "runtime_v3_admission_synthetic.rs"]
+mod synthetic;
+use synthetic::SyntheticRuntimeAdmission;
+
+#[cfg(test)]
+#[path = "runtime_v3_admission_synthetic_tests.rs"]
+mod synthetic_tests;
 
 const ADMISSION_MODE: &str = "STS2_EXO_ADMISSION";
 const PACKAGE_PATH: &str = "STS2_EXO_PACKAGE_PATH";
 const DEFAULT_PRIVATE_STATE_ROOT: &str = "/var/lib/sts2-harness/exo-runtime";
 
 pub(super) fn from_environment(
+    mode: RuntimeV3AdmissionMode,
     process: &ExoProcessConfig,
     map_context_enabled: bool,
     native_instance_id: &str,
-    lifecycle_enabled: bool,
-) -> Result<ExoRuntimeAdmission, String> {
-    match selected_mode(optional(ADMISSION_MODE)?.as_deref())? {
-        ExoAdmissionMode::Enveloped => enveloped(
+    guard: RuntimeV3SyntheticGuard<'_>,
+) -> Result<RuntimeV3Admission, String> {
+    let RuntimeV3SyntheticGuard {
+        provider_kind,
+        live_episode,
+        lifecycle_enabled,
+        lookup_binding_enabled,
+    } = guard;
+    validate_synthetic_preconditions(
+        mode,
+        provider_kind,
+        live_episode,
+        lifecycle_enabled,
+        lookup_binding_enabled,
+    )?;
+    match mode {
+        RuntimeV3AdmissionMode::Enveloped => enveloped(
             process,
             map_context_enabled,
             native_instance_id,
             lifecycle_enabled,
-        ),
-        ExoAdmissionMode::Legacy => Ok(ExoRuntimeAdmission::legacy()),
+        )
+        .map(RuntimeV3Admission::Ordinary),
+        RuntimeV3AdmissionMode::Legacy => {
+            Ok(RuntimeV3Admission::Ordinary(ExoRuntimeAdmission::legacy()))
+        }
+        RuntimeV3AdmissionMode::SyntheticEnvelope => {
+            synthetic::from_environment(process, native_instance_id, map_context_enabled)
+                .map(|admission| RuntimeV3Admission::Synthetic(Box::new(admission)))
+        }
     }
 }
 
-fn selected_mode(value: Option<&str>) -> Result<ExoAdmissionMode, String> {
+fn selected_mode(value: Option<&str>) -> Result<RuntimeV3AdmissionMode, String> {
     match value {
-        None | Some("envelope") => Ok(ExoAdmissionMode::Enveloped),
-        Some("legacy") => Ok(ExoAdmissionMode::Legacy),
+        None | Some("envelope") => Ok(RuntimeV3AdmissionMode::Enveloped),
+        Some("legacy") => Ok(RuntimeV3AdmissionMode::Legacy),
+        Some("synthetic-envelope") => Ok(RuntimeV3AdmissionMode::SyntheticEnvelope),
         Some(_) => Err(format!(
-            "{ADMISSION_MODE} must be exactly envelope or legacy"
+            "{ADMISSION_MODE} must be exactly envelope, legacy, or synthetic-envelope"
         )),
     }
+}
+
+pub(super) fn validate_synthetic_preconditions(
+    mode: RuntimeV3AdmissionMode,
+    provider_kind: Option<&str>,
+    live_episode: bool,
+    lifecycle_enabled: bool,
+    lookup_binding_enabled: bool,
+) -> Result<(), String> {
+    if mode != RuntimeV3AdmissionMode::SyntheticEnvelope {
+        return Ok(());
+    }
+    if provider_kind != Some("exo") {
+        return Err(String::from(
+            "synthetic-envelope admission requires STS2_PROVIDER_KIND=exo",
+        ));
+    }
+    if lookup_binding_enabled {
+        return Err(String::from(
+            "synthetic-envelope admission is unavailable for Harness lookup binding",
+        ));
+    }
+    if lifecycle_enabled {
+        return Err(String::from(
+            "synthetic-envelope admission is unavailable with lifecycle configuration",
+        ));
+    }
+    if live_episode {
+        return Err(String::from(
+            "synthetic-envelope admission is unavailable for live episodes",
+        ));
+    }
+    Ok(())
 }
 
 /// The declared admission mode, without inspecting artifacts or assembling a plan.
@@ -71,7 +134,7 @@ fn selected_mode(value: Option<&str>) -> Result<ExoAdmissionMode, String> {
 /// Live-episode admission asks whether the reviewed envelope is in force, which is a property of
 /// this declaration alone. It is read through the same parser the admission itself uses, so a
 /// misspelt mode cannot be refused in one place and read as the default in another.
-pub(super) fn declared_mode() -> Result<ExoAdmissionMode, String> {
+pub(super) fn declared_mode() -> Result<RuntimeV3AdmissionMode, String> {
     selected_mode(optional(ADMISSION_MODE)?.as_deref())
 }
 

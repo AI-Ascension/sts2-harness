@@ -52,7 +52,7 @@ pub(super) fn runtime_settings(exo: ExoConfig) -> RuntimeV3Settings {
         exo,
         process: ExoProcessConfig::new("/bin/unused-exo-bridge", Vec::new(), None, Vec::new())
             .expect("valid process configuration"),
-        admission: ExoRuntimeAdmission::legacy(),
+        admission: RuntimeV3Admission::Ordinary(ExoRuntimeAdmission::legacy()),
         lifecycle: None,
         lookup_agent: None,
     }

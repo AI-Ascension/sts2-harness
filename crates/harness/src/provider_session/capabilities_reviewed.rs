@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+use crate::ExoIdentity;
+
 impl NativeCapabilities {
     #[must_use]
     pub fn fixture() -> Self {
@@ -108,5 +110,90 @@ impl NativeCapabilities {
         capabilities.validate()?;
         Ok(capabilities)
     }
+}
 
+impl NativeCapabilities {
+    /// Describes an opaque guarded synthetic inspection as schema-only metadata.
+    pub fn reviewed_synthetic_exo_one_shot(
+        inspection: &crate::exo_bridge_configuration::SyntheticLoopbackInspection,
+    ) -> Result<Self, SessionError> {
+        synthetic_exo_one_shot(inspection.inspected_identity())
+    }
+
+    /// Rebuilds the schema-only descriptor from an opaque synthetic plan.
+    pub fn reviewed_synthetic_exo_one_shot_from_plan(
+        plan: &crate::SyntheticExoAdmissionPlan,
+    ) -> Result<Self, SessionError> {
+        synthetic_exo_one_shot(plan.inspected_identity())
+    }
+}
+
+const SYNTHETIC_PROFILE_DIGEST_DOMAIN: &str =
+    "sts2-harness-exo-synthetic-one-shot-provider-profile-v1";
+const SYNTHETIC_PROVIDER_PROFILE_ID: &str = "sts2-exo-synthetic-one-shot-v1";
+const SYNTHETIC_PROVIDER_PROFILE_VERSION: &str = "synthetic-envelope-one-shot-v1";
+const SYNTHETIC_INFERENCE_PROFILE_ADAPTER: &str = "exo.runtime-v3";
+const SYNTHETIC_RUNTIME_SELECTOR: &str = "runtime-v3-gameplay";
+const SYNTHETIC_PROVIDER_METHOD: &str = "turn/start";
+const SYNTHETIC_GUARDED_CONFIGURATION_SCHEMA: &str = "sts2.exo-one-shot-config-v2";
+const SYNTHETIC_EXECUTOR_INPUT_SCHEMA: &str = "sts2.exo-executor-input-v2";
+const SYNTHETIC_EXECUTOR_RECEIPT_SCHEMA: &str = "sts2.exo-executor-receipt-v2";
+const SYNTHETIC_EXO_BRIDGE_SCHEMA_BYTES: &[u8] =
+    include_bytes!("../../../../protocol-artifact/exo-bridge-v1/schema.json");
+
+fn synthetic_exo_one_shot(identity: &ExoIdentity) -> Result<NativeCapabilities, SessionError> {
+    identity
+        .validate_synthetic_loopback()
+        .map_err(|_| SessionError::InvalidCapabilities)?;
+    if !identity.is_complete()
+        || identity.source_revision != crate::EXO_SOURCE_REVISION
+        || identity.contract_version != crate::EXO_CONTRACT_VERSION
+        || identity.provider.as_deref() != Some("openai")
+    {
+        return Err(SessionError::InvalidCapabilities);
+    }
+
+    let schema_sha256 = crate::sha256_hex(SYNTHETIC_EXO_BRIDGE_SCHEMA_BYTES);
+    let digest_input = serde_json::json!({
+        "domain": SYNTHETIC_PROFILE_DIGEST_DOMAIN,
+        "provider_session_schema": SESSION_CAPABILITIES_SCHEMA,
+        "profile_version": SYNTHETIC_PROVIDER_PROFILE_VERSION,
+        "runtime_selector": SYNTHETIC_RUNTIME_SELECTOR,
+        "inference_profile_adapter": SYNTHETIC_INFERENCE_PROFILE_ADAPTER,
+        "provider_method": SYNTHETIC_PROVIDER_METHOD,
+        "exo_contract_version": crate::EXO_CONTRACT_VERSION,
+        "identity": identity,
+        "outer_wire": crate::EXO_BRIDGE_WIRE_VERSION,
+        "decision_schema": crate::EXO_DECISION_SCHEMA,
+        "guarded_configuration_schema": SYNTHETIC_GUARDED_CONFIGURATION_SCHEMA,
+        "executor_input_schema": SYNTHETIC_EXECUTOR_INPUT_SCHEMA,
+        "executor_receipt_schema": SYNTHETIC_EXECUTOR_RECEIPT_SCHEMA,
+        "native_schema_sha256": schema_sha256,
+    });
+    let encoded =
+        serde_json::to_vec(&digest_input).map_err(|_| SessionError::InvalidCapabilities)?;
+    let profile_sha256 = crate::sha256_hex(encoded);
+    let model = identity
+        .model_binding
+        .as_deref()
+        .ok_or(SessionError::InvalidCapabilities)?;
+    let package_digest = identity
+        .package_digest
+        .as_deref()
+        .ok_or(SessionError::InvalidCapabilities)?;
+
+    let mut capabilities = NativeCapabilities::fixture();
+    capabilities.profile_id = SYNTHETIC_PROVIDER_PROFILE_ID.to_owned();
+    capabilities.profile_sha256 = profile_sha256.clone();
+    capabilities.native_version = model.to_owned();
+    capabilities.native_binary_sha256 = package_digest.to_owned();
+    capabilities.native_schema_sha256 = schema_sha256;
+    capabilities.provenance = CapabilityProvenance::SchemaOnly;
+    capabilities.enabled_methods = vec![SYNTHETIC_PROVIDER_METHOD.to_owned()];
+    capabilities.binding.model_revision = model.to_owned();
+    capabilities.binding.adapter_revision = SYNTHETIC_PROVIDER_PROFILE_ID.to_owned();
+    capabilities.binding.adapter_revision_sha256 = profile_sha256;
+    capabilities.binding.descriptor_sha256 = capabilities.descriptor_digest();
+    capabilities.validate()?;
+    Ok(capabilities)
 }

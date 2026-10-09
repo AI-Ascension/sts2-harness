@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 
 use sts2_harness::context_control::PreparedContext;
-use sts2_harness::exo_admission::ExoRuntimeAdmission;
 use sts2_harness::management::{
     AdmittedInferenceProfileBinding, ContextRenderSource, LiveProviderSessionAdmission,
     ManagementError,
@@ -11,12 +10,13 @@ use sts2_harness::{
     PolicyError,
 };
 
+use super::runtime_v3_admission::RuntimeV3Admission;
 use super::{LIVE_DECISION_ADAPTER, LIVE_DECISION_PROFILE_ID, runtime_v3_admission};
 
 pub(super) struct ProfiledExoAdmission {
     pub(super) process: sts2_harness::ExoProcessConfig,
     pub(super) config: ExoConfig,
-    pub(super) admission: ExoRuntimeAdmission,
+    pub(super) admission: RuntimeV3Admission,
     pub(super) profiles: Vec<AdmittedInferenceProfileBinding>,
 }
 
@@ -130,3 +130,7 @@ impl DecisionSource for ProfileBoundDecisionSource {
 #[cfg(test)]
 #[path = "workflow_service_profile_dispatch_source_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "workflow_service_synthetic_profile_tests.rs"]
+mod synthetic_tests;

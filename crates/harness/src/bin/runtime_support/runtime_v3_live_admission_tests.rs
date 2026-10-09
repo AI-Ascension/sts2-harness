@@ -5,10 +5,11 @@
 use std::process::{Command, Output, Stdio};
 use std::time::{Duration, Instant};
 
-use sts2_harness::exo_admission::ExoAdmissionMode;
-
 use super::super::provider::ProviderKind;
-use super::{LiveMode, admitted_live_episode, declared, install, resolve, resolve_declared};
+use super::{
+    LiveMode, RuntimeV3AdmissionMode, admitted_live_episode, declared, install, resolve,
+    resolve_declared,
+};
 
 const CHILD_TEST: &str =
     "runtime_support::runtime_v3_settings::live_admission::tests::live_admission_child";
@@ -111,7 +112,10 @@ fn an_absent_declaration_is_standard_for_every_kind() {
         Some(ProviderKind::Synthetic),
     ] {
         // Both admission modes: not declaring a live episode is not a capability question.
-        for admission in [ExoAdmissionMode::Enveloped, ExoAdmissionMode::Legacy] {
+        for admission in [
+            RuntimeV3AdmissionMode::Enveloped,
+            RuntimeV3AdmissionMode::Legacy,
+        ] {
             assert_eq!(resolve(kind, false, admission), Ok(LiveMode::Standard));
         }
     }
@@ -125,7 +129,7 @@ fn a_kind_without_the_live_capability_cannot_run_a_live_episode() {
         ProviderKind::TypesafeJev,
         ProviderKind::Synthetic,
     ] {
-        let error = resolve(Some(kind), true, ExoAdmissionMode::Legacy)
+        let error = resolve(Some(kind), true, RuntimeV3AdmissionMode::Legacy)
             .expect_err("a kind without live capability must be refused");
         assert!(
             error.contains(kind.name()) && error.contains("live-episode capability"),
@@ -133,7 +137,7 @@ fn a_kind_without_the_live_capability_cannot_run_a_live_episode() {
         );
     }
     // Naming no kind at all cannot borrow one either.
-    let error = resolve(None, true, ExoAdmissionMode::Enveloped)
+    let error = resolve(None, true, RuntimeV3AdmissionMode::Enveloped)
         .expect_err("a live episode must name a kind that declares it");
     assert!(error.contains("STS2_PROVIDER_KIND"), "{error}");
 }
@@ -141,7 +145,10 @@ fn a_kind_without_the_live_capability_cannot_run_a_live_episode() {
 /// The Astra lane's live admission is unchanged, which is what its live runs already rely on.
 #[test]
 fn the_astra_lane_keeps_its_live_admission_on_the_raw_wire_lane() {
-    for admission in [ExoAdmissionMode::Legacy, ExoAdmissionMode::Enveloped] {
+    for admission in [
+        RuntimeV3AdmissionMode::Legacy,
+        RuntimeV3AdmissionMode::Enveloped,
+    ] {
         assert_eq!(
             resolve(Some(ProviderKind::OpenAstra), true, admission),
             Ok(LiveMode::LiveEpisode)
@@ -153,11 +160,19 @@ fn the_astra_lane_keeps_its_live_admission_on_the_raw_wire_lane() {
 #[test]
 fn the_exo_lane_is_live_only_through_the_reviewed_envelope() {
     assert_eq!(
-        resolve(Some(ProviderKind::Exo), true, ExoAdmissionMode::Enveloped),
+        resolve(
+            Some(ProviderKind::Exo),
+            true,
+            RuntimeV3AdmissionMode::Enveloped
+        ),
         Ok(LiveMode::LiveEpisode)
     );
-    let error = resolve(Some(ProviderKind::Exo), true, ExoAdmissionMode::Legacy)
-        .expect_err("the raw-wire acknowledgement does not inspect the Exo descriptor");
+    let error = resolve(
+        Some(ProviderKind::Exo),
+        true,
+        RuntimeV3AdmissionMode::Legacy,
+    )
+    .expect_err("the raw-wire acknowledgement does not inspect the Exo descriptor");
     assert!(
         error.contains("exo") && error.contains("reviewed envelope"),
         "{error}"

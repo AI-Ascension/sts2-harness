@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+use super::runtime_v3_admission::RuntimeV3Admission;
 use super::{RuntimeConfig, RuntimeV3Settings, VerifiedProfileIdentity, unsupported};
-use sts2_harness::exo_admission::ExoRuntimeAdmission;
 use sts2_harness::provider_session::NativeCapabilities;
 use sts2_harness::{EXO_SOURCE_REVISION, ExoIdentity};
 
@@ -15,24 +15,66 @@ pub(super) fn verified_identity(
             "the selected lookup route is not the live decision profile",
         ));
     }
-    let ExoRuntimeAdmission::Enveloped(plan) = &settings.admission else {
-        return Err(unsupported(
-            "raw-wire Exo admission has no inspected profile identity",
-        ));
-    };
-    plan.validate()
-        .map_err(|_| unsupported("the inspected Exo deployment did not pass admission"))?;
-    verify_identity_binding(
-        capabilities,
-        plan.trusted_identity(),
-        plan.inspected_identity(),
-        &settings.exo.revision,
-        &config.instance_id,
-    )
+    match &settings.admission {
+        RuntimeV3Admission::Ordinary(
+            sts2_harness::exo_admission::ExoRuntimeAdmission::Enveloped(plan),
+        ) => {
+            plan.validate()
+                .map_err(|_| unsupported("the inspected Exo deployment did not pass admission"))?;
+            verify_identity_binding(
+                capabilities,
+                plan.trusted_identity(),
+                plan.inspected_identity(),
+                &settings.exo.revision,
+                &config.instance_id,
+            )
+        }
+        RuntimeV3Admission::Synthetic(plan) => {
+            let inspected = plan
+                .inspected_identity()
+                .map_err(|_| unsupported("the synthetic Exo plan is unavailable"))?;
+            let expected = plan
+                .capabilities()
+                .map_err(|_| unsupported("the synthetic Exo profile is unavailable"))?;
+            verify_profile_identity_binding(
+                capabilities,
+                &expected,
+                plan.trusted_identity(),
+                &inspected,
+                &settings.exo.revision,
+                &config.instance_id,
+            )
+        }
+        RuntimeV3Admission::Ordinary(sts2_harness::exo_admission::ExoRuntimeAdmission::Legacy) => {
+            Err(unsupported(
+                "raw-wire Exo admission has no inspected profile identity",
+            ))
+        }
+    }
 }
 
 fn verify_identity_binding(
     capabilities: &NativeCapabilities,
+    trusted: &ExoIdentity,
+    inspected: &ExoIdentity,
+    settings_revision: &str,
+    instance_id: &str,
+) -> Result<VerifiedProfileIdentity, super::ManagementError> {
+    let expected = NativeCapabilities::reviewed_exo_one_shot(inspected)
+        .map_err(|_| unsupported("the inspected Exo identity has no ordinary profile"))?;
+    verify_profile_identity_binding(
+        capabilities,
+        &expected,
+        trusted,
+        inspected,
+        settings_revision,
+        instance_id,
+    )
+}
+
+fn verify_profile_identity_binding(
+    capabilities: &NativeCapabilities,
+    expected: &NativeCapabilities,
     trusted: &ExoIdentity,
     inspected: &ExoIdentity,
     settings_revision: &str,
@@ -50,9 +92,7 @@ fn verify_identity_binding(
         ));
     }
 
-    let expected = NativeCapabilities::reviewed_exo_one_shot(inspected)
-        .map_err(|_| unsupported("the inspected Exo identity has no ordinary profile"))?;
-    if capabilities != &expected {
+    if capabilities != expected {
         return Err(unsupported(
             "the provider capability descriptor does not match the inspected Exo identity",
         ));

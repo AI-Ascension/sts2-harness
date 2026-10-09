@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use sts2_harness::exo_admission::{AdmittedExoRuntimeTransport, ExoRuntimeAdmission};
+use sts2_harness::exo_admission::ExoRuntimeAdmission;
 use sts2_harness::exo_lifecycle::{
     AuthorityVector, ExoLifecycleRuntimeTransport, InvocationManifest, JournalConfig,
     LifecycleError, LifecycleOwner, LifecycleProcessEffect,
@@ -15,6 +15,7 @@ use sts2_harness::provider_session::{
 use sts2_harness::{ExecutionCancellation, ExoTransport, sha256_hex};
 
 use super::super::config::RuntimeConfig;
+use super::super::runtime_v3_admission::RuntimeV3Admission;
 use super::super::runtime_v3_lifecycle_config::{RuntimeLifecycleConfig, RuntimeLifecycleSecrets};
 use super::super::runtime_v3_settings::RuntimeV3Settings;
 use super::durable::DurableHandle;
@@ -70,6 +71,11 @@ pub(super) fn admit(
             _policy_owner: None,
         });
     };
+    if matches!(&settings.admission, RuntimeV3Admission::Synthetic(_)) {
+        return Err(String::from(
+            "synthetic-envelope admission is unavailable with lifecycle configuration",
+        ));
+    }
     let (transport, policy_owner) = build(
         config,
         settings,
@@ -79,15 +85,22 @@ pub(super) fn admit(
         secrets,
     )?;
     match &settings.admission {
-        ExoRuntimeAdmission::Enveloped(plan) => plan
+        RuntimeV3Admission::Ordinary(ExoRuntimeAdmission::Enveloped(plan)) => plan
             .admit_lifecycle(transport)
             .map(|transport| RuntimeTransport {
-                inner: Box::new(AdmittedExoRuntimeTransport::Enveloped(Box::new(transport))),
+                inner: Box::new(
+                    sts2_harness::exo_admission::AdmittedExoRuntimeTransport::Enveloped(Box::new(
+                        transport,
+                    )),
+                ),
                 _policy_owner: Some(policy_owner),
             })
             .map_err(String::from),
-        ExoRuntimeAdmission::Legacy => Err(String::from(
+        RuntimeV3Admission::Ordinary(ExoRuntimeAdmission::Legacy) => Err(String::from(
             "lifecycle transport requires reviewed envelope admission",
+        )),
+        RuntimeV3Admission::Synthetic(_) => Err(String::from(
+            "synthetic-envelope admission is unavailable with lifecycle configuration",
         )),
     }
 }
