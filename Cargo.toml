@@ -48,3 +48,8 @@ panic = "deny"
 todo = "deny"
 unimplemented = "deny"
 unwrap_used = "deny"
+
+# Lifecycle startup repeats full-byte SHA-256 checks for Exo artifacts in development and tests.
+# Optimize only sha2 in dev and its inherited test profile; release settings stay unchanged.
+[profile.dev.package.sha2]
+opt-level = 1

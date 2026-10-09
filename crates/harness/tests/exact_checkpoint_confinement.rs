@@ -41,6 +41,8 @@ fn plain_publication_is_private_durable_deduplicated_and_bounded() -> TestResult
     let digest = store.stage_blob(b"confined")?;
     assert_eq!(store.read_blob(&digest)?, b"confined");
     assert_eq!(store.stage_blob(b"confined")?, digest);
+    let absent = BlobDigest::parse(&format!("sha256:{}", "f".repeat(64)))?;
+    assert_eq!(store.read_blob(&absent), Err(ExactCheckpointError::Missing));
     let path = blob_path(store.root_directory(), &digest);
     assert_eq!(fs::metadata(&path)?.permissions().mode() & 0o777, 0o600);
     let names =
@@ -79,7 +81,9 @@ fn symlink_blob_never_reads_or_rewrites_outside_target() -> TestResult {
         store.read_blob(&digest).is_err(),
         "matching bytes behind a symlink must be refused"
     );
-    assert!(store.stage_blob(b"original").is_err());
+    let refused_write = store.stage_blob(b"original");
+    assert!(refused_write.is_err());
+    assert!(!matches!(refused_write, Err(ExactCheckpointError::Missing)));
     assert_eq!(fs::read(&outside)?, b"original");
     assert!(fs::symlink_metadata(&path)?.file_type().is_symlink());
     Ok(())
