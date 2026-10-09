@@ -169,6 +169,8 @@ impl DurableHandle {
             .resume_for_decision(&self.lineage.episode_id, &self.fingerprint)
             .map_err(|error| format!("runtime-v3 decision admission is blocked: {error}"))?;
         let input_fingerprint = decision_input_digest(input)?;
+        let input_fingerprint =
+            super::recipe::finalize_decision_context(self, input, &input_fingerprint)?;
         let execution_id = input.execution_id.to_string();
         let reference = DecisionReference::new(
             self.lineage.clone(),

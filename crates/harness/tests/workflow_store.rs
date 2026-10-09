@@ -19,6 +19,9 @@ use sts2_harness::{
     WorkflowRunStart,
 };
 
+#[path = "support/workflow_store_recipe_migration.rs"]
+mod recipe_migration;
+
 static NEXT_PATH: AtomicU64 = AtomicU64::new(0);
 
 fn database_path(label: &str) -> PathBuf {
@@ -249,13 +252,13 @@ fn version_one_database_migrates_to_workflow_and_worker_schema() {
     let runtime_tables: i64 = raw
         .query_row(
             "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN
-             ('workflow_events', 'worker_control', 'worker_control_boots', 'worker_handoffs')",
+             ('workflow_events', 'worker_control', 'worker_control_boots', 'worker_handoffs', 'recipe_map_invocations')",
             [],
             |row| row.get(0),
         )
         .expect("runtime table reads");
-    assert_eq!(version, 8);
-    assert_eq!(runtime_tables, 4);
+    assert_eq!(version, 9);
+    assert_eq!(runtime_tables, 5);
     drop(raw);
     remove_database(&path);
 }
