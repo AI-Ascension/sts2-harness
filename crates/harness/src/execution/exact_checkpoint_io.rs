@@ -32,9 +32,12 @@ mod confined {
     use std::ffi::OsStr;
     use std::fs::File;
     use std::io::{Read, Write};
+    use std::os::fd::AsRawFd;
     use std::path::{Component, Path};
 
-    use rustix::fs::{AtFlags, Mode, OFlags, linkat, mkdirat, open, openat};
+    use rustix::fs::{
+        AtFlags, Mode, OFlags, PROC_SUPER_MAGIC, fstatfs, linkat, mkdirat, open, openat,
+    };
     use rustix::io::Errno;
 
     use super::super::{MAX_EXACT_BLOB_BYTES, persistence};
@@ -43,6 +46,9 @@ mod confined {
     const DIRECTORY: OFlags = OFlags::RDONLY
         .union(OFlags::DIRECTORY)
         .union(OFlags::NOFOLLOW)
+        .union(OFlags::CLOEXEC);
+    const PROCESS_DIRECTORY: OFlags = OFlags::RDONLY
+        .union(OFlags::DIRECTORY)
         .union(OFlags::CLOEXEC);
     const READ_FILE: OFlags = OFlags::RDONLY
         .union(OFlags::NOFOLLOW)
@@ -54,7 +60,8 @@ mod confined {
         let directory = directories
             .last()
             .ok_or(ExactCheckpointError::InvalidDigest)?;
-        let file = File::from(openat(directory, name, READ_FILE, Mode::empty()).map_err(io_error)?);
+        let file =
+            File::from(openat(directory, name, READ_FILE, Mode::empty()).map_err(read_error)?);
         read_file(&file)
     }
 
@@ -69,8 +76,12 @@ mod confined {
         match openat(directory, name, READ_FILE, Mode::empty()) {
             Ok(fd) => return existing(File::from(fd), bytes, directory),
             Err(Errno::NOENT) => {}
-            Err(error) => return Err(io_error(error)),
+            Err(error) => return Err(write_error(error)),
         }
+        publish(directory, name, bytes)
+    }
+
+    fn publish(directory: &File, name: &OsStr, bytes: &[u8]) -> Result<(), ExactCheckpointError> {
         // The temporary has no pathname an attacker could replace between write and publication.
         let mut temporary = File::from(
             openat(
@@ -79,20 +90,71 @@ mod confined {
                 OFlags::WRONLY | OFlags::TMPFILE | OFlags::CLOEXEC,
                 Mode::RUSR | Mode::WUSR,
             )
-            .map_err(io_error)?,
+            .map_err(write_error)?,
         );
         temporary.write_all(bytes).map_err(persistence)?;
         temporary.sync_all().map_err(persistence)?;
         match linkat(&temporary, "", directory, name, AtFlags::EMPTY_PATH) {
             Ok(()) => sync_directory(directory),
-            Err(Errno::EXIST) => {
-                let file = File::from(
-                    openat(directory, name, READ_FILE, Mode::empty()).map_err(io_error)?,
-                );
-                existing(file, bytes, directory)
-            }
-            Err(error) => Err(io_error(error)),
+            Err(Errno::EXIST) => existing_at(directory, name, bytes),
+            Err(Errno::NOENT) => publish_via_procfs(&temporary, directory, name, bytes),
+            Err(error) => Err(write_error(error)),
         }
+    }
+
+    fn publish_via_procfs(
+        temporary: &File,
+        directory: &File,
+        name: &OsStr,
+        bytes: &[u8],
+    ) -> Result<(), ExactCheckpointError> {
+        let proc_fds = proc_fd_directory()?;
+        // Keep the unnamed file open while procfs resolves its kernel-owned descriptor entry.
+        let temporary_name = temporary.as_raw_fd().to_string();
+        match linkat(
+            &proc_fds,
+            temporary_name.as_str(),
+            directory,
+            name,
+            AtFlags::SYMLINK_FOLLOW,
+        ) {
+            Ok(()) => sync_directory(directory),
+            Err(Errno::EXIST) => existing_at(directory, name, bytes),
+            Err(error) => Err(write_error(error)),
+        }
+    }
+
+    fn proc_fd_directory() -> Result<File, ExactCheckpointError> {
+        let proc_root = File::from(open("/proc", DIRECTORY, Mode::empty()).map_err(write_error)?);
+        verify_procfs(&proc_root)?;
+        // Resolve only procfs's kernel-owned self entry after verifying the held proc root.
+        let process = File::from(
+            openat(&proc_root, "self", PROCESS_DIRECTORY, Mode::empty()).map_err(write_error)?,
+        );
+        let descriptors =
+            File::from(openat(&process, "fd", DIRECTORY, Mode::empty()).map_err(write_error)?);
+        verify_procfs(&descriptors)?;
+        Ok(descriptors)
+    }
+
+    fn verify_procfs(directory: &File) -> Result<(), ExactCheckpointError> {
+        let filesystem = fstatfs(directory).map_err(write_error)?;
+        if filesystem.f_type != PROC_SUPER_MAGIC {
+            return Err(persistence(std::io::Error::other(
+                "descriptor publication requires procfs",
+            )));
+        }
+        Ok(())
+    }
+
+    fn existing_at(
+        directory: &File,
+        name: &OsStr,
+        bytes: &[u8],
+    ) -> Result<(), ExactCheckpointError> {
+        let file =
+            File::from(openat(directory, name, READ_FILE, Mode::empty()).map_err(write_error)?);
+        existing(file, bytes, directory)
     }
 
     fn existing(file: File, bytes: &[u8], directory: &File) -> Result<(), ExactCheckpointError> {
@@ -135,7 +197,7 @@ mod confined {
                 DIRECTORY,
                 Mode::empty(),
             )
-            .map_err(io_error)?,
+            .map_err(|error| path_error(error, create))?,
         )];
         for component in parent.components() {
             let name = match component {
@@ -155,11 +217,11 @@ mod confined {
                     match mkdirat(directory, name, Mode::RWXU) {
                         Ok(()) => sync_directory(directory)?,
                         Err(Errno::EXIST) => {}
-                        Err(error) => return Err(io_error(error)),
+                        Err(error) => return Err(write_error(error)),
                     }
-                    openat(directory, name, DIRECTORY, Mode::empty()).map_err(io_error)?
+                    openat(directory, name, DIRECTORY, Mode::empty()).map_err(write_error)?
                 }
-                Err(error) => return Err(io_error(error)),
+                Err(error) => return Err(path_error(error, create)),
             };
             directories.push(File::from(next));
         }
@@ -170,12 +232,24 @@ mod confined {
         directory.sync_all().map_err(persistence)
     }
 
-    fn io_error(error: Errno) -> ExactCheckpointError {
+    fn read_error(error: Errno) -> ExactCheckpointError {
         if error == Errno::NOENT {
             ExactCheckpointError::Missing
         } else {
             persistence(error.into())
         }
+    }
+
+    fn path_error(error: Errno, creating: bool) -> ExactCheckpointError {
+        if creating {
+            write_error(error)
+        } else {
+            read_error(error)
+        }
+    }
+
+    fn write_error(error: Errno) -> ExactCheckpointError {
+        persistence(error.into())
     }
 }
 

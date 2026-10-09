@@ -88,37 +88,37 @@ exactly when later plan steps stop revalidating, and no other test in that modul
 - These are local unit and integration tests over a scripted transport. No native host, live provider,
   hosted or production evidence is claimed here, and none was gathered.
 
-### The 17 pre-existing runtime-binary failures are environmental and were not treated as ours
+### Historical runtime failures exposed the then-unfixed exact-store publication path
 
-`cargo test -p sts2-harness --bin sts2-harness-runtime` reports 17 failures in
-`branch_continuation_runtime`, `exact_restore` and the lifecycle admission tests. They are present
-unchanged at the parent commit `9ccca364` and were re-run there to confirm it rather than assumed:
-base and head fail on the identical 17 names, and head adds one passing test.
+At the reviewed pre-#847 revisions, `cargo test -p sts2-harness --bin sts2-harness-runtime` reported
+17 failures in `branch_continuation_runtime`, `exact_restore` and the lifecycle admission tests.
+They were present unchanged at parent commit `9ccca364` and were re-run there. Both revisions had
+the same 17 failing names; head also had one passing test.
 
-They are not environmental by assumption either. The failures reduce to `ExactArtifactStore`
-returning `Missing` from the confined write path in
-`execution/exact_checkpoint_io.rs`. Nothing in this change touches that store, that path jail or
-those tests. Fixing it is a separate piece of work and is deliberately not folded into a change
-about plan dispatch validation, where it would be an unreviewable second subject.
+Those historical failures were not classified as environmental by assumption. They reduced to
+`ExactArtifactStore` returning `Missing` from the confined write path in
+`execution/exact_checkpoint_io.rs`. Nothing in the original plan-dispatch change touched that store,
+that path jail or those tests. The separate #847 runtime correction is recorded in
+[ADR 0088](0088-exact-artifact-descriptor-publication.md); this historical plan decision does not
+reopen or revise the completed #813 documentation scope.
 
-**The mechanism, measured rather than assumed.** The directory walk over the blob prefix and the
-leaf `openat` both succeed, and `openat(".", O_TMPFILE | O_WRONLY)` *succeeds too* — the unnamed
-temporary is created and written, and its descriptor is a valid regular file. The failure is the
-next call: `linkat(&temporary, "", directory, name, AT_EMPTY_PATH)` returns `ENOENT`, which
-`io_error` maps to `ExactCheckpointError::Missing`, which is the error those tests report.
+**The then-current mechanism, measured rather than assumed.** The directory walk over the blob
+prefix and leaf `openat` both succeeded, as did `openat(".", O_TMPFILE | O_WRONLY)`: the unnamed
+temporary was created and written, and its descriptor was a valid regular file. The next call,
+`linkat(&temporary, "", directory, name, AT_EMPTY_PATH)`, returned `ENOENT`; `io_error` mapped it to
+`ExactCheckpointError::Missing`, the error those tests reported.
 
-Two controls isolate it to `AT_EMPTY_PATH` rather than to the filesystem or the path jail. Linking
-the same content, in the same directory, by *named* path succeeds; and `fstat` on the temporary's
-descriptor succeeds. The underlying condition is that this container holds **no capabilities at
-all** (`CapEff: 0000000000000000` in `/proc/self/status`), so it lacks `CAP_DAC_READ_SEARCH`,
-without which `linkat` cannot honour `AT_EMPTY_PATH` and resolves the unnamed file as absent.
+Two controls isolated it to `AT_EMPTY_PATH` rather than to the filesystem or path jail. Linking the
+same content in the same directory by *named* path succeeded, as did `fstat` on the temporary's
+descriptor. The measured container held **no capabilities at all**
+(`CapEff: 0000000000000000` in `/proc/self/status`), so it lacked `CAP_DAC_READ_SEARCH`, without
+which `linkat` could not honour `AT_EMPTY_PATH` and resolved the unnamed file as absent.
 
-Two consequences a reader should not have to rediscover. The confined write path is **not** unsound
-in general — it is sound wherever `CAP_DAC_READ_SEARCH` is available, and it degrades to a typed
-`Missing` rather than a panic or a partial artifact either way. And the store does **not** currently
-fall back to a weaker publication path when the capability is absent: an admitted write simply
-reports `Missing`. Whether that should instead degrade to an explicit unsupported-capability result
-is a separate design decision for whoever owns `ExactArtifactStore`, and is deliberately not settled
-here.
+The old empty-path publication depended on `CAP_DAC_READ_SEARCH`. At that revision, the store did
+not fall back to a weaker publication path when the capability was absent: it reported `Missing`.
+That behavior is preserved here as historical evidence. The current source-level design first keeps
+the original `AT_EMPTY_PATH` route for environments where it succeeds; only its `ENOENT` result
+selects the verified procfs descriptor fallback. That fallback fails closed if unavailable, as
+ADR 0088 records. Runtime validation of that correction remains a separate gate.
 
 Refs #319.
