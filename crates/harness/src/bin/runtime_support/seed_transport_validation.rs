@@ -2,27 +2,47 @@
 
 use serde::Serialize;
 use sha2::{Digest, Sha256};
+use sts2_harness::seed_binding::{SeedBindingError, canonicalize_seed};
 
 use super::{
     ContextDigestInput, MAX_ACTS, MAX_CONTEXT_TEXT_BYTES, MAX_ENTRIES, MAX_IDENTITY_BYTES,
-    MAX_MODIFIERS, MAX_SEED_BYTES, PlanDocument, SelectedContext,
+    MAX_MODIFIERS, PlanDocument, SelectedContext,
 };
 
-pub(super) fn validate_plan(plan: &PlanDocument) -> Result<(), String> {
+/// Historical plans could contain surrounding whitespace. Such a plan can
+/// only reconcile an exact existing reservation; it cannot admit a new start.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum SeedPlanAdmission {
+    NewOrRecovery,
+    RecoveryOnly,
+}
+
+pub(super) fn validate_plan(plan: &PlanDocument) -> Result<SeedPlanAdmission, String> {
     if plan.entries.is_empty() || plan.entries.len() > MAX_ENTRIES {
         return Err(String::from(
             "STS2_SEED_PLAN_JSON entries are outside their bound",
         ));
     }
+    let mut admission = SeedPlanAdmission::NewOrRecovery;
     for (index, entry) in plan.entries.iter().enumerate() {
         if entry.ordinal != index as u64 {
             return Err(String::from(
                 "STS2_SEED_PLAN_JSON ordinals must be contiguous",
             ));
         }
-        validate_seed(&entry.requested_seed)?;
+        match canonicalize_seed(&entry.requested_seed) {
+            Ok(_) => {}
+            Err(SeedBindingError::SeedNotCanonical) => {
+                admission = SeedPlanAdmission::RecoveryOnly;
+            }
+            Err(_) => {
+                return Err(String::from(
+                    "requested seed is empty, unsafe, or oversized",
+                ));
+            }
+        }
     }
-    Ok(())
+    Ok(admission)
 }
 
 pub(super) fn validate_context(context: &SelectedContext) -> Result<(), String> {
@@ -106,15 +126,6 @@ pub(super) fn validate_recorded_context(
     if computed != context.context_digest || computed != claimed_digest {
         return Err(String::from(
             "seeded receipt selected context digest does not match its fields",
-        ));
-    }
-    Ok(())
-}
-
-fn validate_seed(value: &str) -> Result<(), String> {
-    if value.is_empty() || value.len() > MAX_SEED_BYTES || value.chars().any(char::is_control) {
-        return Err(String::from(
-            "requested seed is empty, unsafe, or oversized",
         ));
     }
     Ok(())
