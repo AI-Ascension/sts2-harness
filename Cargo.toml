@@ -24,17 +24,17 @@ serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.151"
 sha2 = "=0.11.0"
 hmac = { version = "=0.13.0", features = ["zeroize"] }
-toml = "=1.1.6"
+toml = "=1.1.8"
 rusqlite = { version = "=0.40.2", default-features = false, features = ["bundled"] }
 rustix = { version = "=1.1.5", features = ["event", "fs", "net", "pipe", "process", "time"] }
 getrandom = "=0.4.3"
 png = "=0.18.1"
-rustls = { version = "=0.23.45", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+rustls = { version = "=0.23.46", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 webpki-roots = "=1.0.9"
 rustls-pki-types = "=1.15.1"
 sts2-protocol = { git = "https://github.com/AI-Ascension/sts2-protocol.git", rev = "0bc689eabc5542ede2b09b030d9ea32daa8a73e7" }
 tokio = { version = "=1.53.2", default-features = false, features = ["io-std", "io-util", "macros", "process", "rt", "sync", "time"] }
-zeroize = "=1.9.0"
+zeroize = "=1.9.1"
 windows-sys = "=0.61.2"
 
 [workspace.lints.rust]
