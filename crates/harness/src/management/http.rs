@@ -18,6 +18,32 @@ mod failure_report;
 mod lifecycle;
 #[path = "http_lifecycle_log.rs"]
 mod lifecycle_log;
+#[path = "http_owned_api.rs"]
+mod owned_api;
+#[cfg(target_os = "linux")]
+#[path = "http_owned_backend.rs"]
+mod owned_backend;
+#[cfg(target_os = "linux")]
+#[path = "http_owned_child_wait.rs"]
+mod owned_child_wait;
+#[cfg(target_os = "linux")]
+#[path = "http_owned_deadline.rs"]
+mod owned_deadline;
+#[cfg(target_os = "linux")]
+#[path = "http_owned_frontend.rs"]
+mod owned_frontend;
+#[cfg(target_os = "linux")]
+#[path = "http_owned_process_scope.rs"]
+mod owned_process_scope;
+#[cfg(target_os = "linux")]
+#[path = "http_owned_proxy.rs"]
+mod owned_proxy;
+#[cfg(target_os = "linux")]
+#[path = "http_owned_supervisor.rs"]
+mod owned_supervisor;
+#[cfg(target_os = "linux")]
+#[path = "http_owned_wire.rs"]
+mod owned_wire;
 #[path = "http_parse.rs"]
 mod parse;
 #[path = "http_response.rs"]
@@ -50,6 +76,11 @@ mod supervision;
 pub use failure_report::{ManagementFailurePort, ManagementFailureSink};
 use lifecycle::serve_reported;
 use lifecycle_log::RequestLifecycleLog;
+pub(super) use owned_api::serve_owned_backend;
+pub use owned_api::{
+    owned_management_backend_requested, owned_management_supervisor_requested,
+    serve_owned_management,
+};
 use response::{
     auth_http_error, io_http_error, parse_bearer, validate_loopback, wake_listener,
     write_raw_status,
@@ -68,6 +99,9 @@ mod dispatch_tests;
 #[cfg(test)]
 #[path = "http_lifecycle_log_server_tests.rs"]
 mod lifecycle_log_server_tests;
+#[cfg(all(test, target_os = "linux"))]
+#[path = "http_owned_process_tests.rs"]
+mod owned_process_tests;
 
 use super::auth::Authenticator;
 use super::contract::{

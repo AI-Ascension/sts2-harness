@@ -8,6 +8,9 @@ fn main() {
         match runtime_support::serve_workflow() {
             Ok(()) => return,
             Err(error) => {
+                if sts2_harness::management::owned_management_supervisor_requested() {
+                    std::process::exit(2);
+                }
                 eprintln!("sts2-harness live workflow service failed: {error}");
                 std::process::exit(2);
             }

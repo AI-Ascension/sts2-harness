@@ -14,6 +14,16 @@ pub(super) fn write_response(
     deadline: Instant,
     limits: &HttpLimits,
 ) -> Result<(), HttpError> {
+    write_response_with_diagnostic_loss(stream, response, deadline, limits, None)
+}
+
+pub(super) fn write_response_with_diagnostic_loss(
+    stream: &mut TcpStream,
+    response: Result<HttpResponse, HttpError>,
+    deadline: Instant,
+    limits: &HttpLimits,
+    diagnostic_loss: Option<u64>,
+) -> Result<(), HttpError> {
     let response = match response {
         Ok(response) => response,
         Err(error) => error_response(error, limits.max_response_bytes)?,
@@ -24,8 +34,11 @@ pub(super) fn write_response(
             "response exceeds the bound",
         ));
     }
+    let diagnostic = diagnostic_loss
+        .map(|count| format!("X-Ascension-Diagnostic-Loss: {count}\r\n"))
+        .unwrap_or_default();
     let head = format!(
-        "HTTP/1.1 {} {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        "HTTP/1.1 {} {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n{diagnostic}Connection: close\r\n\r\n",
         response.status,
         response.reason,
         response.body.len()
@@ -143,47 +156,33 @@ pub(super) fn write_with_deadline(
     bytes: &[u8],
     deadline: Instant,
 ) -> Result<(), HttpError> {
-    // The same `TimedOut | WouldBlock` kinds the read path terminates on are
-    // exactly what a blocking `TcpStream` write reports when the send buffer
-    // fills against a peer that is not reading, so they are classified by the
-    // shared retry policy rather than by a local mapping. The prior
-    // `io_http_error` mapping sent both kinds to `io_error` and code
-    // `io_error`, so a write that hit its deadline reported itself as a
-    // transport fault rather than as the deadline it actually hit.
-    //
-    // Routing through `retry_transient` rather than adding a local arm keeps
-    // the two deadline spellings in one place: the timeout is re-derived per
-    // pass, an already-expired deadline is refused before any syscall, and the
-    // `deadline_exceeded` code and message come from the same helper the read
-    // path uses. The kinds this call raises are terminal in that policy, so
-    // the write is not retried.
-    //
-    // `Interrupted` needs no arm here, unlike `read_with_deadline`: this call
-    // is `Write::write_all`, whose default implementation already retries
-    // `ErrorKind::Interrupted` and resumes the partial write, so a
-    // `SIGCHLD` delivered mid-write cannot surface through it. Two independent
-    // confirmations, because this is the whole reason the write path is left
-    // alone: `std::net::TcpStream` does not override `write_all`, and the
-    // default implementation in `std::io` carries `Err(ref e) if
-    // e.is_interrupted() => {}`. A synthetic writer that returns `Interrupted`
-    // for its first attempt returns `Ok(())` from `write_all` after exactly two
-    // `write` calls. Adding a retry here would be uncovered code.
-    //
-    // A `WouldBlock` must be terminal rather than retried, and that is a
-    // stronger claim than "no partial write can reach us": a scripted writer
-    // that consumes 4 bytes and *then* returns `WouldBlock` makes `write_all`
-    // return `Err(WouldBlock)` to this caller, so the buffer is in fact
-    // partially consumed at the point the error surfaces. The progress
-    // `write_all` made is held inside that call and is gone when it returns.
-    // Re-driving the closure with the same `bytes` would therefore re-send the
-    // prefix and corrupt the peer's view of the response. The arm above
-    // terminates instead of re-entering, which is what makes the lossy
-    // partial write harmless: the connection is abandoned as `deadline_exceeded`
-    // rather than resumed.
-    retry_transient(deadline, "response deadline exceeded", |timeout| {
+    write_progress(bytes, deadline, |remaining, timeout| {
         stream.set_write_timeout(Some(timeout))?;
-        stream.write_all(bytes)
+        stream.write(remaining)
     })
+}
+
+fn write_progress(
+    mut bytes: &[u8],
+    deadline: Instant,
+    mut attempt: impl FnMut(&[u8], Duration) -> io::Result<usize>,
+) -> Result<(), HttpError> {
+    // Preserve the cursor ourselves. write_all can make multiple successful partial writes
+    // under the same socket timeout, renewing that timeout without consulting our deadline.
+    // Each syscall here derives its remaining budget from the same absolute write deadline.
+    while !bytes.is_empty() {
+        let written = retry_transient(deadline, "response deadline exceeded", |timeout| {
+            attempt(bytes, timeout)
+        })?;
+        if written == 0 || written > bytes.len() {
+            return Err(io_http_error(io::Error::new(
+                io::ErrorKind::WriteZero,
+                "response write made invalid progress",
+            )));
+        }
+        bytes = &bytes[written..];
+    }
+    Ok(())
 }
 
 pub(super) fn find_header_end(bytes: &[u8]) -> Option<usize> {

@@ -5,6 +5,10 @@
 Accepted engineering decision for the unreleased owner-local management surface.
 Refs [#818](https://github.com/AI-Ascension/sts2-harness/issues/818).
 
+[ADR 0091](0091-owned-management-backend-termination.md) subsequently adds an owned
+Linux process boundary to the shipped management commands. The retained in-process
+embedding behavior and its limitations described here remain available separately.
+
 ## Problem
 
 The HTTP adapter bounded request reads and response writes separately, but invoked

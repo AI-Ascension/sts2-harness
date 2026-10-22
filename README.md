@@ -214,6 +214,20 @@ reported as unverified rather than converted into a pass.
 
 For user-selected Ollama models, see [Ollama model selection](docs/OLLAMA_MODEL_SELECTION.md).
 
+The current management HTTP commands, `sts2-workflow serve` and
+`sts2-harness-runtime serve-workflow`, require Linux with accessible procfs and pidfd support.
+They refuse inherited ignored `SIGCHLD` before spawning because cleanup requires waitable
+child exit statuses; launch them with default child-wait semantics.
+They start an owned backend process so a stalled handler can be terminated and reaped before
+replacement. On Windows and other platforms these two commands return
+`owned_management_platform`; they no longer start the earlier in-process server. Other runtime
+commands and the historical Windows campaign records have their own compatibility scope.
+Dispatch defaults to 30 seconds, independently of the five-second read and write budgets.
+Backend retirement can leave an external write uncertain and invalidates every in-memory live
+session in that backend; recover the original operation identity before taking another action.
+See [ADR 0091](docs/decisions/0091-owned-management-backend-termination.md) for configuration,
+diagnostic-loss reporting, recovery and the generic embedding API's different shutdown contract.
+
 The standalone `sts2-harness-runtime` binary is the explicit coordinator for the first
 `runtime-v1` trace. It allocates one configured gateway lease, starts the MCP process, performs
 initialize/list/state/action/stale-action/fresh-state calls, checks the effect witness and stable

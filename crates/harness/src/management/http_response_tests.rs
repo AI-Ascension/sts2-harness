@@ -2,9 +2,7 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-use std::io::Write;
 use std::net::TcpListener;
-use std::sync::Mutex;
 
 use super::*;
 
@@ -159,13 +157,6 @@ fn a_silent_peer_still_reports_the_deadline_through_a_real_socket() {
     accepted.join().expect("the accept thread must finish");
 }
 
-// The write side needed none of these while it mapped every `io::Error`
-// through `io_http_error`, so it is worth stating what the tests below hold to
-// and what they do not. They do not exercise a partially consumed buffer:
-// `write_all` keeps its progress internally and never hands a partial write
-// back to this module, so the two kinds asserted here are always raised on a
-// call that consumed nothing.
-
 #[test]
 fn a_write_timeout_maps_to_the_deadline_error_not_to_a_client_error() {
     // The observable defect: a write that hit its deadline reported
@@ -226,61 +217,66 @@ fn an_expired_write_deadline_is_reported_without_attempting() {
     accepted.join().expect("the accept thread must finish");
 }
 
-// The reason the `WouldBlock` arm is terminal rather than retried. This is not
-// a claim about this repository's code: it is a property of
-// `std::io::Write::write_all`, and it is the one that would silently corrupt a
-// response if a later change re-enabled the retry.
-//
-// `write_all` keeps its write cursor inside the call, so a partial write
-// followed by a timeout reaches the caller as a bare `Err(WouldBlock)` with
-// the progress discarded. Re-sending the same buffer after that would replay
-// the already-written prefix. If the retry policy below ever grew a `WouldBlock`
-// arm that re-entered the closure, this test would be the thing that catches
-// the resulting duplicate-prefix bug.
 #[test]
-fn a_partial_write_that_then_times_out_reaches_the_caller_with_no_progress_kept() {
-    struct Scripted {
-        steps: Mutex<Vec<(io::ErrorKind, usize)>>,
-        calls: usize,
-    }
-    impl Write for Scripted {
-        fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
-            let step = self
-                .steps
-                .lock()
-                .expect("the script mutex must not be poisoned")
-                .get(self.calls)
-                .copied()
-                .unwrap_or((io::ErrorKind::Other, buffer.len()));
-            self.calls += 1;
-            match step.0 {
-                io::ErrorKind::Other => Ok(step.1.min(buffer.len())),
-                kind => Err(io::Error::new(kind, "scripted")),
+fn partial_write_then_timeout_abandons_the_suffix_without_replaying_the_prefix() {
+    let mut seen = Vec::new();
+    let error = write_progress(
+        b"0123456789",
+        Instant::now() + Duration::from_secs(1),
+        |bytes, _| {
+            seen.push(bytes.to_vec());
+            if seen.len() == 1 {
+                Ok(4)
+            } else {
+                Err(io::ErrorKind::WouldBlock.into())
             }
-        }
-        fn flush(&mut self) -> io::Result<()> {
-            Ok(())
-        }
-    }
+        },
+    )
+    .expect_err("timeout after progress must be terminal");
+    assert_eq!(error.code, "deadline_exceeded");
+    assert_eq!(seen, [b"0123456789".to_vec(), b"456789".to_vec()]);
+}
 
-    let mut writer = Scripted {
-        steps: Mutex::new(vec![
-            (io::ErrorKind::Other, 4),
-            (io::ErrorKind::WouldBlock, 0),
-        ]),
-        calls: 0,
-    };
-    let error = writer
-        .write_all(&[b'z'; 10])
-        .expect_err("a timeout after a partial write must surface");
+#[test]
+fn successful_partial_progress_cannot_restart_the_total_write_budget() {
+    let mut calls = 0;
+    let error = write_progress(
+        b"0123456789",
+        Instant::now() + Duration::from_millis(10),
+        |_, timeout| {
+            calls += 1;
+            std::thread::sleep(timeout + Duration::from_millis(1));
+            Ok(4)
+        },
+    )
+    .expect_err("the next partial write must consult the original deadline");
+    assert_eq!(error.code, "deadline_exceeded");
+    assert_eq!(calls, 1, "no second syscall may restart the expired budget");
+}
+
+#[test]
+fn an_interruption_after_partial_progress_resumes_only_the_unwritten_suffix() {
+    let mut seen = Vec::new();
+    write_progress(
+        b"0123456789",
+        Instant::now() + Duration::from_secs(1),
+        |bytes, _| {
+            seen.push(bytes.to_vec());
+            match seen.len() {
+                1 => Ok(4),
+                2 => Err(interrupted()),
+                _ => Ok(bytes.len()),
+            }
+        },
+    )
+    .expect("interruption resumes without restarting the prefix");
     assert_eq!(
-        error.kind(),
-        io::ErrorKind::WouldBlock,
-        "write_all must surface the timeout kind, not swallow it"
-    );
-    assert_eq!(
-        writer.calls, 2,
-        "write_all must resume once and then give up on the timeout"
+        seen,
+        [
+            b"0123456789".to_vec(),
+            b"456789".to_vec(),
+            b"456789".to_vec()
+        ]
     );
 }
 

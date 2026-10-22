@@ -161,6 +161,8 @@ pub use contract_seed_v2::{
 pub use http::{
     ClientResponse, HttpError, HttpLimits, ManagementClient, ManagementFailurePort,
     ManagementFailureSink, ManagementServer, ServerConfig, ServerHandle,
+    owned_management_backend_requested, owned_management_supervisor_requested,
+    serve_owned_management,
 };
 pub use lifecycle::{
     LaunchProfileId, LifecycleAction, LifecycleClassification, LifecycleCommand,

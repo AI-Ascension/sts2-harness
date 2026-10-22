@@ -194,6 +194,10 @@ fn serve_live_service(
     authenticator: std::sync::Arc<dyn Authenticator>,
     service: std::sync::Arc<ManagementService>,
 ) -> Result<(), ManagementError> {
+    if owned_management_backend_requested() {
+        return super::http::serve_owned_backend(service, authenticator)
+            .map_err(|error| ManagementError::unavailable("workflow_backend", error.to_string()));
+    }
     let config = ServerConfig::new(listen, authenticator)
         .map_err(|error| ManagementError::invalid("workflow_server_config", error.to_string()))?;
     let server = ManagementServer::start(config, service).map_err(|error| {

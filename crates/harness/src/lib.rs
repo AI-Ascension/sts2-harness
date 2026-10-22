@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: MIT
 
+// Reuse the existing integration-test live factory from process-boundary unit fixtures.
+#[cfg(test)]
+extern crate self as sts2_harness;
+
 use sha2::{Digest as _, Sha256};
 
 /// Encode bytes as lowercase hexadecimal without formatting the digest type.

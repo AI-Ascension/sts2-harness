@@ -72,6 +72,17 @@ repository, not a runtime service or a generic-common implementation crate. See
 
 ## Concurrency and lifecycle
 
+The Linux management commands place synchronous authentication, stores, context-owner,
+runtime/provider ports and diagnostic writes in a persistent backend. A dedicated helper owns
+that backend and its adopted descendants; the HTTP frontend owns bounded sockets and private
+queues. A dispatch deadline retires the whole backend generation, and a replacement cannot open
+owner journals until the helper proves all old children reaped. Unknown external effects retain
+their original request/operation identities and require the existing owner recovery paths.
+Backend replacement also loses every in-memory live session in that generation; durable history
+does not reinstall current writer authority. The embedded `ManagementServer` retains its separate
+thread-supervision contract. See [ADR 0091](decisions/0091-owned-management-backend-termination.md)
+for exact budgets, Linux ownership proof, diagnostic loss and the pending-cleanup limit.
+
 Typed decision replay lives in `decision_replay.rs`, separate from foundation record replay.
 Evaluation aggregation and its report projection live in `evaluation.rs` and
 `evaluation_report.rs`; the public replay and evaluation exports remain stable.

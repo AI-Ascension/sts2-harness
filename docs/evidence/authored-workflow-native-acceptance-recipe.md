@@ -46,6 +46,17 @@ be recorded separately; do not collapse them into one "version" field.
 
 ## Environment for the served process
 
+The current served command requires Linux with accessible procfs and pidfd support. Windows
+and other platforms return `owned_management_platform` instead of starting an in-process owner.
+Record the operating system and the exact Harness pin alongside the component pins above;
+the historical Windows campaign evidence does not qualify this changed command. The default
+dispatch budget is 30 seconds, independent of the five-second HTTP read and write budgets.
+`STS2_MANAGEMENT_DISPATCH_MILLIS` may select a positive budget through 300,000 milliseconds;
+the consumer wait must allow that budget and cleanup. A terminated backend loses all of its
+in-memory live sessions. Recover the original operation identities and retain unknown external
+write state; restarting the process is not evidence of rollback or resumed execution. See
+[ADR 0091](../decisions/0091-owned-management-backend-termination.md).
+
 `sts2-harness-runtime serve-workflow` is the entry point. Four settings have no default and the
 process refuses to start without them:
 
