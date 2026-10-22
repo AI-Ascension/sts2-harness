@@ -57,22 +57,73 @@ fn recovered(fixture: &Fixture, request_id: &str) -> crate::management::Submissi
 }
 
 #[test]
-fn http_error_encoding_preserves_owner_class_instead_of_guessing_from_status() {
+fn only_recovery_specific_http_errors_preserve_owner_class() {
     use crate::management::ErrorClass;
-    for class in [
-        ErrorClass::Capability,
-        ErrorClass::Unresolved,
-        ErrorClass::Budget,
-        ErrorClass::Store,
-        ErrorClass::WriteStateUnknown,
-    ] {
+    for class in [ErrorClass::Store, ErrorClass::WriteStateUnknown] {
         let owner = ManagementError::new(class.clone(), "owner_code", "owner classification");
         let expected = serde_json::to_value(owner.error_response()).expect("owner response");
         let response =
             super::response::error_response(HttpError::from_management(owner), MAX_RESPONSE_BYTES)
                 .expect("HTTP encoding");
         let actual: serde_json::Value = serde_json::from_slice(&response.body).expect("wire JSON");
+        assert_eq!(response.status, 503);
         assert_eq!(actual, expected);
+    }
+}
+
+#[test]
+fn existing_http_v1_errors_keep_their_legacy_wire_class() {
+    use crate::management::ErrorClass;
+    for (class, code, status, wire_class) in [
+        (
+            ErrorClass::InvalidInput,
+            "legacy_error",
+            400,
+            "invalid_input",
+        ),
+        (
+            ErrorClass::Authentication,
+            "legacy_error",
+            401,
+            "authentication",
+        ),
+        (ErrorClass::Forbidden, "legacy_error", 403, "forbidden"),
+        (
+            ErrorClass::Capability,
+            "inference_profile_context_incompatible",
+            409,
+            "conflict",
+        ),
+        (ErrorClass::Conflict, "legacy_error", 409, "conflict"),
+        (ErrorClass::Unresolved, "legacy_error", 409, "conflict"),
+        (ErrorClass::Budget, "legacy_error", 409, "conflict"),
+        (ErrorClass::Replay, "legacy_error", 422, "replay"),
+        (ErrorClass::Unavailable, "legacy_error", 503, "unavailable"),
+        (
+            ErrorClass::Capability,
+            "draft_not_found",
+            404,
+            "invalid_input",
+        ),
+    ] {
+        let owner = ManagementError::new(class, code, "legacy error detail");
+        let response =
+            super::response::error_response(HttpError::from_management(owner), MAX_RESPONSE_BYTES)
+                .expect("HTTP encoding");
+        let actual: serde_json::Value = serde_json::from_slice(&response.body).expect("wire JSON");
+        assert_eq!(response.status, status, "{code}");
+        assert_eq!(
+            actual,
+            serde_json::json!({
+                "schema_version": "ascension.management/v1",
+                "error": {
+                    "class": wire_class,
+                    "code": code,
+                    "message": "legacy error detail",
+                },
+            }),
+            "{code}"
+        );
     }
 }
 
