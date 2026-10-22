@@ -25,9 +25,12 @@ all default server phases plus a five-second scheduling margin.
 
 An expired read-only GET returns `unavailable`. An expired mutating request returns
 HTTP 503 with `write_state_unknown` under `ascension.management-error/v2`. Existing
-error classes retain `ascension.management/v1`; the HTTP serializer preserves their
-actual class rather than reconstructing it from the status code. This avoids extending
-the closed v1 enum discussed in ADR 0047. An old strict client must reject the unknown
+errors retain `ascension.management/v1` and its status-derived HTTP classes: owner
+capability, unresolved and budget errors remain HTTP 409 `conflict`; HTTP 404 remains
+`invalid_input`. The explicit `store` class is preserved at HTTP 503 so a persistence
+failure remains distinguishable from general unavailability. Retained submission
+errors keep their original owner class. These mappings avoid extending the closed v1
+enum discussed in ADR 0047. An old strict client must reject the unknown
 version and preserve the original operation identity. It must not translate an unknown
 error envelope or broken connection into permission to resubmit with a new ID.
 
@@ -110,3 +113,6 @@ recovery, actor isolation, late completion, no second port invocation, explicit 
 uncertainty, immutable outcomes and restart/racing SQLite claims. All ports and gameplay
 are synthetic. This does not reproduce or close Studio's intermittent native 502 cause,
 prove native/provider latency, or establish cross-process cancellation of a stalled port.
+The HTTP wire regression covers every legacy class mapping, including Studio's existing
+`inference_profile_context_incompatible` refusal, alongside the two recovery-specific
+class overrides; retained owner errors remain separately classified.
