@@ -31,6 +31,7 @@ pub(super) fn serve_with_stop(
 ) -> Result<(), HttpError> {
     limits.validate()?;
     validate_loopback(listen)?;
+    super::owned_child_wait::require_waitable_children()?;
     let (work, requests) = mpsc::sync_channel(limits.max_connections);
     let (diagnostics, logs) = mpsc::sync_channel(64);
     let proxy = Proxy {
