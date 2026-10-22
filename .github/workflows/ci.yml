@@ -95,7 +95,7 @@ jobs:
   windows-check:
     name: Windows cross-compilation check
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -108,7 +108,12 @@ jobs:
           rustup target add --toolchain 1.97.1 x86_64-pc-windows-gnu
 
       - name: Install the mingw cross linker
-        run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64
+        # The Azure mirror exhausted two 15-minute runs before compilation began.
+        run: |
+          sudo find /etc/apt -maxdepth 2 -type f \( -name '*.list' -o -name '*.sources' -o -name apt-mirrors.txt \) -exec sed -i -E 's@https?://azure\.archive\.ubuntu\.com/@https://archive.ubuntu.com/@g' {} +
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install -y --no-install-recommends gcc-mingw-w64-x86-64-posix
+          test "$(x86_64-w64-mingw32-gcc -dumpmachine)" = x86_64-w64-mingw32
 
       # Check only: this lane exists to prove the library still compiles for Windows, not to
       # claim it behaves correctly there. Warnings are not denied because unix-gated modules
@@ -124,14 +129,9 @@ jobs:
       # installed above for `cargo check`; the mingw cross linker is required here too because a
       # workspace dependency's build script invokes the C compiler before any lint runs.
       #
-      # `-A dead_code` is allowed for this target only, for the reason the check step above
-      # records: unix-gated modules leave dead code on a Windows target, so those warnings are
-      # noise here and the three rustdoc denies are what this step enforces. It belongs in
-      # `RUSTFLAGS`, not `RUSTDOCFLAGS`, and that distinction is measured rather than stylistic:
-      # `cargo doc --workspace` documents each member's bins as well as its lib, the
-      # bins link the lib, and the lib is therefore built once by **rustc**, which `RUSTDOCFLAGS`
-      # never reaches. With the flag in `RUSTDOCFLAGS` alone this step failed its own first
-      # hosted run — `windows-doc: exit=0 errors=0 warnings=4`, all four `dead_code`
+      # Target-only `-A dead_code` also belongs in `RUSTFLAGS`: workspace bins link their libs
+      # through rustc, which `RUSTDOCFLAGS` never reaches. The three rustdoc denies still apply.
+      # With only `RUSTDOCFLAGS`, the first hosted run had exit=0 errors=0 warnings=4, all dead_code
       # (`persistence`, `as_str`, `is_empty`, and the crate summary; job 108000689696) — while a
       # run scoped to `--lib` prints no `dead_code` at all because no bin links the lib there.
       # Acceptance is still read from the log rather than the step conclusion — a misspelled deny
