@@ -10,6 +10,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::path::PathBuf;
 
+#[cfg(test)]
+#[path = "seed_transport_admission_tests.rs"]
+mod admission_tests;
 #[path = "seed_transport_reservation.rs"]
 mod reservation;
 #[cfg(test)]
@@ -25,7 +28,6 @@ use validation::{
 
 const MAX_PLAN_BYTES: usize = 256 * 1024;
 const MAX_ENTRIES: usize = 1024;
-const MAX_SEED_BYTES: usize = 64;
 const MAX_IDENTITY_BYTES: usize = 128;
 const MAX_CONTEXT_TEXT_BYTES: usize = 128;
 const MAX_MODIFIERS: usize = 32;
@@ -110,6 +112,7 @@ struct ContextDigestInput<'a> {
 #[derive(Clone, Debug)]
 #[allow(dead_code)]
 pub(crate) struct SeedTransportConfig {
+    admission: validation::SeedPlanAdmission,
     pub(super) plan_digest: String,
     pub(super) entry_ordinal: u64,
     pub(super) requested_seed: String,
@@ -154,6 +157,7 @@ impl SeedTransportConfig {
         )
         .unwrap_or_else(|error| panic!("test context must parse: {error}"));
         Self {
+            admission: validation::SeedPlanAdmission::NewOrRecovery,
             plan_digest: "a".repeat(64),
             entry_ordinal: 0,
             requested_seed: requested_seed.to_owned(),
@@ -178,7 +182,7 @@ impl SeedTransportConfig {
         }
         let plan: PlanDocument = serde_json::from_str(&raw_plan)
             .map_err(|error| format!("STS2_SEED_PLAN_JSON is invalid: {error}"))?;
-        validate_plan(&plan)?;
+        let admission = validate_plan(&plan)?;
         let plan_digest = sha256_json(&plan)?;
         if let Ok(expected) = std::env::var("STS2_SEED_PLAN_DIGEST")
             && expected != plan_digest
@@ -246,7 +250,8 @@ impl SeedTransportConfig {
                 "STS2_SEED_CONTEXT_DIGEST does not match the context",
             ));
         }
-        Ok(Some(Self {
+        let config = Self {
+            admission,
             plan_digest,
             entry_ordinal: entry.ordinal,
             requested_seed: entry.requested_seed.clone(),
@@ -254,7 +259,9 @@ impl SeedTransportConfig {
             run_mode,
             verify_idempotency,
             context,
-        }))
+        };
+        config.validate_admission()?;
+        Ok(Some(config))
     }
 
     pub(crate) fn selected_context(&self) -> Value {
