@@ -17,8 +17,9 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   `write_state_unknown`; retained workers and actor-bound V1 submission claims prevent
   a repeated launch. Authenticated original-ID recovery exposes pending, submitted or
   failed outcomes without revealing foreign claims. Finished workers join; stalled
-  synchronous work remains explicit on shutdown. Existing classes retain their v1
-  envelope. Synthetic regressions do not establish native cancellation or resolve the
+  synchronous work remains explicit on shutdown. Existing errors retain their v1
+  envelope and status-derived HTTP classes; store failures remain explicitly `store`.
+  Synthetic regressions do not establish native cancellation or resolve the
   intermittent Studio 502 cause. Refs #818; see
   [ADR 0089](docs/decisions/0089-bounded-management-dispatch-recovery.md).
 
