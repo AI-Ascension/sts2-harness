@@ -26,10 +26,26 @@ and join all released workers; `management::http::supervision::tests` exercises 
 registry admission bound. Served validation, inspection, diff, target preflight and GET
 stalls report read-only unavailability, while disconnected response channels use the
 same reviewed route effects and preserve conservative write uncertainty for unknown routes.
-These synthetic cases establish no native/provider latency
-or cancellation guarantee; see [ADR 0089](decisions/0089-bounded-management-dispatch-recovery.md).
-Synchronous lifecycle/failure sinks still run outside the phase waits; the served-port stall
-tests do not establish termination of a connection blocked on diagnostic output.
+These embedded-server cases establish no native/provider latency or cancellation guarantee.
+Their synchronous lifecycle/failure sinks still run outside the phase waits; they do not
+establish termination of a connection blocked on diagnostic output. See
+[ADR 0089](decisions/0089-bounded-management-dispatch-recovery.md).
+
+The Linux owned-command boundary is exercised separately by
+`management::http::owned_process_tests`, `owned_process_scope::tests` and
+`owned_wire::tests`. These use real frontend/helper/backend processes, loopback sockets,
+SQLite claims and pidfds with controlled live ports. They force permanent read/write
+stalls, process-group escape, saturated ordinary capacity with original-ID recovery,
+shared-session loss, blocked stderr and helper panic. They also check bounded private
+framing, stale generations/sequences and absolute deadlines. Partial-response-write
+regressions verify that progress and interruptions never renew the total write budget or
+repeat an already-written prefix. `management_owned_cli` runs the shipped `sts2-workflow serve`
+command with a competing SQLite writer, proves the blocked backend exits before its busy wait,
+and recovers the original submission before any resubmission. It also verifies that losing
+the frontend closes the helper/backend ownership scope. See
+[ADR 0091](decisions/0091-owned-management-backend-termination.md) for the Linux scope,
+diagnostic-loss header and explicit pending-cleanup behavior. These are transport and
+ownership tests; native game/provider cleanup remains a separate acceptance boundary.
 
 `production_launch_observation` exercises the served production session through HTTP
 with a SQLite reservation and synthetic runtime/provider ports. It distinguishes
