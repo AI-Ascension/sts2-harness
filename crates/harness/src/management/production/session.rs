@@ -139,7 +139,7 @@ impl LiveWorkflowSession for ProductionLiveWorkflowSession {
         let observation = self
             .runtime
             .observe()
-            .map_err(runtime_error("live_launch_fence_failed"))?;
+            .map_err(errors::launch_observation_error)?;
         self.record_context_observation(&observation)?;
         let actions = self
             .runtime

@@ -31,6 +31,12 @@ or cancellation guarantee; see [ADR 0089](decisions/0089-bounded-management-disp
 Synchronous lifecycle/failure sinks still run outside the phase waits; the served-port stall
 tests do not establish termination of a connection blocked on diagnostic output.
 
+`production_launch_observation` exercises the served production session through HTTP
+with a SQLite reservation and synthetic runtime/provider ports. It distinguishes
+retryable and terminal observation failures, proves one launch and zero provider opens,
+and retains original-ID recovery across replay/restart, including cleanup and persistence
+faults. See [ADR 0090](decisions/0090-production-launch-observation-recovery.md).
+
 Tests must prove observable coordination, record, lifecycle, privacy, and artifact behavior rather
 than merely execute lines. Most harness logic must run without a game, provider, MCP server, gateway,
 socket, or wall clock. Controlled runtime lanes are separate and cannot be inferred from local tests.
