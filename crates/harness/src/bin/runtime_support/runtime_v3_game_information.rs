@@ -3,6 +3,7 @@ use super::*;
 use serde_json::json;
 use sts2_harness::game_information::{
     LookupError, LookupMcpContext, LookupMcpPort, call_capabilities_mcp, call_lookup_mcp,
+    call_content_manifest_mcp,
 };
 use sts2_harness::game_information_binding::{
     LookupBindingContext, LookupBindingError, LookupBindingPort, LookupBindingRequest,
@@ -11,6 +12,7 @@ use sts2_harness::game_information_binding::{
 
 include!("runtime_v3_game_information_bootstrap.rs");
 include!("runtime_v3_game_information_mcp.rs");
+include!("runtime_v3_game_information_manifest.rs");
 
 impl LookupBindingPort for RuntimeV3Port {
     fn lookup_binding(
