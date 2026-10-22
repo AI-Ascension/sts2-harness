@@ -10,6 +10,19 @@ pub(crate) fn runtime_error(
     move |error| ManagementError::unavailable(code, error.to_string())
 }
 
+/// The run reservation and runtime launch precede this observation. Retryability
+/// describes the failed read, never permission to repeat the surrounding launch.
+pub(super) fn launch_observation_error(error: crate::PortError) -> ManagementError {
+    let message = format!(
+        "{error}; runtime launch already ran; recover the original request_id and do not resubmit with a new identity"
+    );
+    if error.is_retryable() {
+        ManagementError::write_state_unknown("live_launch_fence_failed", message)
+    } else {
+        ManagementError::unresolved("live_launch_fence_failed", message)
+    }
+}
+
 pub(crate) fn provider_error(error: crate::episode::PolicyError) -> ManagementError {
     if let crate::episode::PolicyError::SelectedContextLimit(limit) = error {
         return ManagementError::capability(
