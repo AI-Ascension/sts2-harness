@@ -105,6 +105,19 @@ impl Owner {
             ));
         }
         let state = entry.authority.state();
+        entry.authority.admit_plan(state.plan_epoch).map_err(|_| {
+            if state.pause_latched && !state.stop_latched {
+                ManagementError::conflict(
+                    sts2_harness::management::CONTEXT_OWNER_PAUSED,
+                    "the context owner is paused; explicit owner resume is required before inference",
+                )
+            } else {
+                ManagementError::conflict(
+                    "context_render_gate_closed",
+                    "the context control authority does not admit this decision plan",
+                )
+            }
+        })?;
         let (active, source_snapshot) = entry
             .store
             .active_context_source(&state.active_revision_id)
