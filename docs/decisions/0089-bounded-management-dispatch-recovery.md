@@ -23,8 +23,13 @@ five-second read and write budgets each begin at their own phase. The shipped cl
 keeps five-second connect/write limits and waits at most 45 seconds overall, covering
 all default server phases plus a five-second scheduling margin.
 
-An expired read-only GET returns `unavailable`. An expired mutating request returns
-HTTP 503 with `write_state_unknown` under `ascension.management-error/v2`. Existing
+Route effects, rather than the HTTP method, determine an expired or disconnected
+dispatch response. Exact read routes return HTTP 503 `unavailable`. These include
+definition validation, inspection and diff, target preflight, offline replay, redacted
+export and historical receipt lookup even though they use POST. Unknown route shapes
+remain conservatively classified as possibly mutating until explicitly reviewed.
+A possibly mutating request returns HTTP 503 with `write_state_unknown` under
+`ascension.management-error/v2`. Existing
 errors retain `ascension.management/v1` and its status-derived HTTP classes: owner
 capability, unresolved and budget errors remain HTTP 409 `conflict`; HTTP 404 remains
 `invalid_input`. The explicit `store` class is preserved at HTTP 503 so a persistence
@@ -37,12 +42,44 @@ error envelope or broken connection into permission to resubmit with a new ID.
 A timed-out synchronous worker keeps its executor slot and all captured resources until
 it finishes. No new handler starts when capacity is exhausted. When capacity exceeds
 one, one slot is reserved for authenticated submission-recovery GETs; capacity one has
-no such additional slot. Completed workers are joined and removed. Shutdown joins the
-bounded HTTP handlers, gives dispatch workers a 100-millisecond drain window, and
-returns `dispatch_shutdown_pending` if synchronous work remains. The remaining work may
-settle later. Arbitrary synchronous Rust ports cannot be forcibly cancelled safely;
-neither a response deadline nor this shutdown error claims cancellation or cleanup.
-Process termination still requires durable reconciliation on restart.
+no such additional slot. Only the exact, query-free recovery route with a valid request
+identifier can use that slot. Completed workers are joined and removed.
+
+The server thread supervises both connection and dispatch workers. On shutdown or an
+admission failure it closes the listener, then keeps every worker handle until it has
+joined all accepted work. `ServerHandle::shutdown(&self)` stops admission and waits up
+to 100 milliseconds for that supervisor, returning `dispatch_shutdown_pending` if work
+remains. Its listener wake has a separate maximum of 50 milliseconds. Shutdown no longer
+consumes the public handle: the caller may inspect `pending_dispatches()`, repeat shutdown,
+or explicitly `wait()` until all handlers are joined. The latter can wait indefinitely
+for an uncooperative port and is not a bounded cancellation operation.
+
+A process-local registry retains each supervisor before returning its public handle.
+Dropping a handle therefore stops admission without dropping unfinished worker ownership.
+The registry admits at most 128 active or draining servers; pending owners are never
+evicted to admit replacements. A full registry refuses server creation before spawning
+a supervisor. Subsequent server starts, completed shutdown/wait calls, or an explicit
+`ManagementServer::reap_retired_servers()` join completed supervisors and release their
+registry entries. A retained owner whose state cannot be read remains capacity-consuming.
+An abandoned handler can occupy this finite capacity indefinitely; this is a visible
+availability limit, not a cancellation claim.
+
+The budgets apply to their read, dispatch-wait and write phases. Connection lifecycle
+logging and undeliverable-response reporting still call synchronous sinks outside those
+waits. A blocked custom sink or backpressured production stderr can therefore hold a
+connection before dispatch or during teardown. Its connection handle remains supervised,
+but bounding that diagnostic I/O is also unfinished #818 work; this component does not
+claim an unconditional end-to-end connection-termination deadline.
+
+Arbitrary synchronous Rust ports cannot be forcibly cancelled safely. Neither a response
+deadline, retained supervision nor a pending shutdown response establishes that the
+stalled handler has terminated. The termination acceptance criterion of #818 remains
+unfinished internal engineering work. It requires deadline-aware production ports and
+bounded lock/I/O operations, or an owned process boundary for non-cooperative components;
+merely moving a blocking call to another detached thread is insufficient. Terminating an
+isolated worker would still require durable write-identity reconciliation, not a claim
+that an external write was undone. Process termination requires that reconciliation on
+restart as well.
 
 ## Submission fence and recovery
 
@@ -110,7 +147,12 @@ Studio or any deployed client has adopted this contract.
 Tests force stalls before any external validation result and after a durable live run
 reservation. They check the actual loopback HTTP response, retained capacity, read-only
 recovery, actor isolation, late completion, no second port invocation, explicit shutdown
-uncertainty, immutable outcomes and restart/racing SQLite claims. All ports and gameplay
+uncertainty, immutable outcomes and restart/racing SQLite claims. Repeated shutdown and
+dropped-handle regressions prove that the same supervisor retains accepted capacity and
+joins every released handler. A capacity-one registry test proves that abandoning its
+handle cannot admit a replacement until the original supervisor is joined. Served stalls
+cover read-only POST handlers and GET; disconnected-channel tests exercise the same
+production outcome mapper for reads, writes and unknown route shapes. All ports and gameplay
 are synthetic. This does not reproduce or close Studio's intermittent native 502 cause,
 prove native/provider latency, or establish cross-process cancellation of a stalled port.
 The HTTP wire regression covers every legacy class mapping, including Studio's existing
