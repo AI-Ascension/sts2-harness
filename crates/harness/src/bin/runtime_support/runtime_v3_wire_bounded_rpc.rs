@@ -21,6 +21,26 @@ pub(in super::super) fn rpc_call_catalog_read(
     rpc_call_with_read_kind(mcp, id, method, params, RpcReadKind::Catalog, None)
 }
 
+pub(in super::super) fn rpc_call_manifest_read(
+    mcp: &mut McpProcess,
+    id: u64,
+    params: Value,
+) -> Result<Value, RpcFailure> {
+    if params["name"] != "sts2.game_information_content_manifest" {
+        return Err(RpcFailure::terminal(
+            "MCP manifest dispatch has an invalid tool",
+        ));
+    }
+    rpc_call_with_read_kind(
+        mcp,
+        id,
+        "tools/call",
+        params,
+        RpcReadKind::ContentManifest,
+        None,
+    )
+}
+
 pub(in super::super) fn rpc_call_recovery_read(
     mcp: &mut McpProcess,
     id: u64,
@@ -100,6 +120,10 @@ fn rpc_call_with_read_kind(
 }
 
 fn accepts_tool_error(response: &Value, method: &str, id: u64, read_kind: RpcReadKind) -> bool {
+    if read_kind == RpcReadKind::ContentManifest {
+        return method == "tools/call"
+            && sts2_harness::game_information::content_manifest_response_mcp(response, id).is_ok();
+    }
     method == "tools/call"
         && (super::has_gameplay_envelope(response)
             || super::has_expert_action_envelope(response)
