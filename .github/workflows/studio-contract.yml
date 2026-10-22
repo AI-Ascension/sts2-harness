@@ -42,13 +42,19 @@ jobs:
         run: cargo build --locked --bin sts2-workflow
 
       - name: Install consumer Node runtime
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24.16.0'
           cache: npm
           cache-dependency-path: studio/package-lock.json
 
+      - name: Bound signed Ubuntu package downloads
+        run: |
+          sudo find /etc/apt -maxdepth 2 -type f \( -name '*.list' -o -name '*.sources' -o -name apt-mirrors.txt \) -exec sed -i -E 's@https?://azure\.archive\.ubuntu\.com/@https://archive.ubuntu.com/@g' {} +
+          printf '%s\n' 'Acquire::Retries "3";' 'Acquire::http::Timeout "30";' 'Acquire::https::Timeout "30";' | sudo tee /etc/apt/apt.conf.d/80-ci-network > /dev/null
+
       - name: Install locked consumer and browser
+        timeout-minutes: 15
         working-directory: studio
         run: |
           npm ci
@@ -94,7 +100,7 @@ jobs:
 
       - name: Retain synthetic consumer failure evidence
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: studio-consumer-failure-${{ github.sha }}-${{ github.run_attempt }}
           path: studio/test-results
