@@ -76,3 +76,27 @@ cross-target conformance files are checked separately from this coordinator poli
 
 The implementation is source and deterministic-test evidence. It does not by itself establish a
 live host run, Windows/Linux compatibility, or a completed gameplay campaign.
+
+## Amendment: consistent new-seed admission with retained legacy recovery
+
+The runtime plan now uses the same `seed_binding::canonicalize_seed` validator as explicit authored
+workflow requests. Every seed in a new plan must be non-empty, at most 64 UTF-8 bytes, free of control
+characters, and free of leading or trailing Unicode whitespace. Interior whitespace remains valid.
+Accepted bytes are preserved; this policy neither trims a seed nor owns the host's canonical-seed
+readback. The duplicate runtime input bound is removed.
+
+Earlier runtime plans accepted surrounding whitespace. Rejecting every such plan would prevent
+same-operation reconciliation of a possibly delivered legacy start. A plan containing only that
+historical difference is therefore classified as **recovery only**. Configuration admission requires
+an existing `seeded-run-reservation-v1` record matching the complete operation, plan, selected entry,
+seed, mode and context identity. The existing lifecycle, receipt-presence and safe-generation rules
+remain enforced. The same record is checked again when the reservation is used.
+
+A recovery-only configuration never enters `create_new`: a missing, replaced, malformed or
+conflicting reservation is an error, including deletion after configuration admission. A valid
+record returns `resumed = true` and its original generation, so the existing runtime branch performs
+only reconciliation. No fresh seed operation is admitted from noncanonical input.
+
+This is a Harness-local admission correction. It changes no shared protocol schema, artifact digest,
+management request shape, persisted reservation shape, accepted seed bytes or host authority. See
+[seed admission and recovery](../seed-admission.md) for migration and verification scope.
