@@ -310,6 +310,8 @@ pub enum ErrorClass {
     Conflict,
     Forbidden,
     Unresolved,
+    /// The operation may have written. Recover its original identity before any retry.
+    WriteStateUnknown,
     Unavailable,
     Budget,
     Store,

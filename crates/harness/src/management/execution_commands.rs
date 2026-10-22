@@ -69,10 +69,12 @@ pub(super) fn apply_command(
         }
         CommandKind::Cancel => {
             let reconcile_error = reconcile_pending(&mut run.state).err();
-            if reconcile_error
-                .as_ref()
-                .is_some_and(|error| error.class == ErrorClass::Unresolved)
-            {
+            if reconcile_error.as_ref().is_some_and(|error| {
+                matches!(
+                    error.class,
+                    ErrorClass::Unresolved | ErrorClass::WriteStateUnknown
+                )
+            }) {
                 return Ok(application(
                     run,
                     WorkflowRunStatus::NeedsOperator,

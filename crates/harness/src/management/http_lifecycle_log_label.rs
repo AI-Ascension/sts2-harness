@@ -36,6 +36,7 @@ const ROUTE_TEMPLATES: &[(&str, &str)] = &[
     ("POST", "/v1/workflow-definitions/inspect"),
     ("POST", "/v1/workflow-definitions/diff"),
     ("POST", "/v1/workflow-runs"),
+    ("GET", "/v1/workflow-submissions/{request_id}"),
     ("POST", "/v2/workflow-runs"),
     ("GET", "/v2/workflow-runs/{run_id}/seed-binding"),
     ("GET", "/v1/workflow-targets"),

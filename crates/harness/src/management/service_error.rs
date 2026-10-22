@@ -31,6 +31,11 @@ impl ManagementError {
         Self::new(ErrorClass::Unresolved, code, message)
     }
 
+    /// A timeout or interrupted submission is not evidence that no write occurred.
+    pub fn write_state_unknown(code: impl Into<String>, message: impl Into<String>) -> Self {
+        Self::new(ErrorClass::WriteStateUnknown, code, message)
+    }
+
     pub fn unavailable(code: impl Into<String>, message: impl Into<String>) -> Self {
         Self::new(ErrorClass::Unavailable, code, message)
     }
@@ -53,7 +58,12 @@ impl ManagementError {
 
     pub fn error_response(&self) -> ErrorResponse {
         ErrorResponse {
-            schema_version: MANAGEMENT_SCHEMA_VERSION.to_owned(),
+            schema_version: if self.class == ErrorClass::WriteStateUnknown {
+                super::super::contract::MANAGEMENT_ERROR_V2
+            } else {
+                MANAGEMENT_SCHEMA_VERSION
+            }
+            .to_owned(),
             error: ErrorBody {
                 class: self.class.clone(),
                 code: self.code.clone(),

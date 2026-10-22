@@ -14,6 +14,8 @@ mod provider_session;
 mod seed_support_v2;
 #[path = "contract_store_types.rs"]
 mod store_types;
+#[path = "contract_submission.rs"]
+mod submission;
 #[path = "contract_target_admission.rs"]
 mod target_admission;
 #[path = "contract_types.rs"]
@@ -25,5 +27,6 @@ pub use json::*;
 pub use provider_session::*;
 pub use seed_support_v2::*;
 pub use store_types::*;
+pub use submission::*;
 pub use target_admission::*;
 pub use types::*;

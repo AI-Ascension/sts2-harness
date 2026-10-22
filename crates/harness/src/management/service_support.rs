@@ -50,8 +50,7 @@ pub(super) fn validate_profile(profile: &str) -> Result<(), ManagementError> {
     }
 }
 
-pub(super) fn enforce_live_profile(
-    capabilities: &Arc<dyn CapabilityPort>,
+pub(super) fn authorize_live_profile(
     actor: &AuthContext,
     profile: &str,
 ) -> Result<(), ManagementError> {
@@ -63,6 +62,18 @@ pub(super) fn enforce_live_profile(
             "live_scope_required",
             "live workflow execution requires the workflow:live scope",
         ));
+    }
+    Ok(())
+}
+
+pub(super) fn enforce_live_profile(
+    capabilities: &Arc<dyn CapabilityPort>,
+    actor: &AuthContext,
+    profile: &str,
+) -> Result<(), ManagementError> {
+    authorize_live_profile(actor, profile)?;
+    if !(profile == "live" || profile.starts_with("live.")) {
+        return Ok(());
     }
     let value = capabilities.capabilities()?;
     if !has_capability(&value, "workflow.live") && !has_capability(&value, profile) {

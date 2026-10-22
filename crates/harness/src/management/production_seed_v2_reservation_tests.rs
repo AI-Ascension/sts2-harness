@@ -49,7 +49,7 @@ pub(super) fn assert_store_failure(
         "injected SQLite write must fail as unavailable"
     );
     let body: serde_json::Value = serde_json::from_slice(&response.body).expect("error body");
-    assert_eq!(body["error"]["class"], "unavailable");
+    assert_eq!(body["error"]["class"], "store");
     assert_eq!(body["error"]["code"], expected_code);
 }
 

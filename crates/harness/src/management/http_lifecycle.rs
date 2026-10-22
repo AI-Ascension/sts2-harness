@@ -48,13 +48,11 @@
 //! second report mechanism for the same failure.
 
 use std::net::TcpStream;
-use std::panic::AssertUnwindSafe;
 use std::time::Instant;
 
 use super::lifecycle_log::RequestLifecycleLog;
 use super::parse::read_request;
 use super::response::write_response;
-use super::routes::dispatch;
 use super::*;
 use crate::management::auth::Authenticator;
 use crate::management::service::ManagementService;
@@ -66,10 +64,11 @@ use crate::management::service::ManagementService;
 /// same value, and the lifecycle markers are emitted in addition.
 pub(super) fn serve_reported(
     mut stream: TcpStream,
-    service: &ManagementService,
-    authenticator: &dyn Authenticator,
+    service: Arc<ManagementService>,
+    authenticator: Arc<dyn Authenticator>,
     limits: &HttpLimits,
     lifecycle_log: &RequestLifecycleLog,
+    dispatch_executor: &super::dispatch_executor::DispatchExecutor,
 ) -> Result<(), (Option<String>, HttpError)> {
     // Opened before the first read so the record exists even if the peer never
     // finishes a request. It emits nothing on its own.
@@ -80,7 +79,7 @@ pub(super) fn serve_reported(
     // instead of the computed response, and saw a silent close (`ECONNRESET`) for a
     // request the owner had answered. That is what made Studio's
     // `submission_refused_502` undiagnosable (#816, studio #214). The bound itself is
-    // unchanged -- `limits.deadline` still caps each phase.
+    // unchanged for I/O; dispatch has its own independent `dispatch_deadline`.
     let read_deadline = Instant::now() + limits.deadline;
     // The route is captured before dispatch consumes the request, so #819's failure
     // report can name it. A request that never parsed has no route and is reported
@@ -98,15 +97,25 @@ pub(super) fn serve_reported(
             // panicking handler is reported as itself and then still fails the
             // connection loudly instead of being silently converted into an ordinary
             // error response. Catching without resuming would hide the fault.
-            let response = match std::panic::catch_unwind(AssertUnwindSafe(|| {
-                dispatch(request, service, authenticator)
-            })) {
+            lifecycle.log_dispatch_budget(limits.dispatch_deadline);
+            let response = match dispatch_executor.dispatch(
+                request,
+                service,
+                authenticator,
+                limits.dispatch_deadline,
+            ) {
                 Ok(response) => response,
                 Err(payload) => {
                     lifecycle.log_panicked();
                     std::panic::resume_unwind(payload);
                 }
             };
+            if response
+                .as_ref()
+                .is_err_and(|error| error.code == "dispatch_deadline_exceeded")
+            {
+                lifecycle.log_dispatch_timeout();
+            }
             (Some(route), response)
         }
         // The connection ended without a readable request, so no start marker can be

@@ -240,20 +240,32 @@ impl HttpError {
             code: error.code,
             message: error.message,
             status,
+            class: Some(error.class),
         }
     }
 
     fn error_response(&self) -> ErrorResponse {
         ErrorResponse {
-            schema_version: super::super::contract::MANAGEMENT_SCHEMA_VERSION.to_owned(),
+            schema_version: if self.class == Some(ErrorClass::WriteStateUnknown) {
+                super::super::contract::MANAGEMENT_ERROR_V2
+            } else {
+                super::super::contract::MANAGEMENT_SCHEMA_VERSION
+            }
+            .to_owned(),
             error: super::super::contract::ErrorBody {
-                class: match self.status {
-                    401 => ErrorClass::Authentication,
-                    403 => ErrorClass::Forbidden,
-                    409 => ErrorClass::Conflict,
-                    422 => ErrorClass::Replay,
-                    503 => ErrorClass::Unavailable,
-                    _ => ErrorClass::InvalidInput,
+                // Existing HTTP v1 clients consume the status-derived class,
+                // which is distinct from the more precise retained owner error.
+                class: match self.class.as_ref() {
+                    Some(ErrorClass::WriteStateUnknown) => ErrorClass::WriteStateUnknown,
+                    Some(ErrorClass::Store) => ErrorClass::Store,
+                    _ => match self.status {
+                        401 => ErrorClass::Authentication,
+                        403 => ErrorClass::Forbidden,
+                        409 => ErrorClass::Conflict,
+                        422 => ErrorClass::Replay,
+                        503 => ErrorClass::Unavailable,
+                        _ => ErrorClass::InvalidInput,
+                    },
                 },
                 code: self.code.clone(),
                 message: self.message.clone(),
@@ -300,6 +312,6 @@ fn management_status(class: &ErrorClass) -> u16 {
         | ErrorClass::Unresolved
         | ErrorClass::Budget => 409,
         ErrorClass::Replay => 422,
-        ErrorClass::Unavailable | ErrorClass::Store => 503,
+        ErrorClass::Unavailable | ErrorClass::Store | ErrorClass::WriteStateUnknown => 503,
     }
 }

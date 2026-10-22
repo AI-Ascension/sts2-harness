@@ -274,8 +274,10 @@ impl ProductionLiveWorkflowSession {
                 // receipt is retained and the decision stays retryable. An unresolved outcome may
                 // already have reached the provider, so the receipt `resume` recorded is retained
                 // and made durable before the failure is reported.
-                if error.class == ErrorClass::Unresolved
-                    && let Some(receipt) = boundary.recorded_receipt()
+                if matches!(
+                    error.class,
+                    ErrorClass::Unresolved | ErrorClass::WriteStateUnknown
+                ) && let Some(receipt) = boundary.recorded_receipt()
                 {
                     self.retain_receipt(receipt)?;
                 }

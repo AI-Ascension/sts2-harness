@@ -72,6 +72,8 @@ mod seed_v2;
 mod seed_v2_support;
 #[path = "service_submission.rs"]
 mod submission;
+#[path = "service_submission_claim.rs"]
+mod submission_claim;
 #[path = "service_support.rs"]
 mod support;
 #[path = "service_target_admission.rs"]

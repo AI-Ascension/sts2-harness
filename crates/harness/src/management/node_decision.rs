@@ -45,7 +45,7 @@ use crate::workflow::{
 /// raise, and releasing on that code alone would authorize a second paid exchange.
 pub(super) fn classify_decision_refusal(error: &ManagementError) -> RuntimeFault {
     match error.class {
-        ErrorClass::Unresolved => RuntimeFault::UnknownEffect,
+        ErrorClass::Unresolved | ErrorClass::WriteStateUnknown => RuntimeFault::UnknownEffect,
         _ => RuntimeFault::ExecutorUnavailable,
     }
 }

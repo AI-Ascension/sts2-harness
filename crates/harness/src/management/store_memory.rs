@@ -10,6 +10,29 @@ use super::{
 };
 
 impl WorkflowStore for MemoryWorkflowStore {
+    fn claim_submission(
+        &self,
+        request_id: &str,
+        claim: super::super::contract::SubmissionClaim,
+    ) -> Result<super::super::contract::SubmissionClaimAcceptance, StoreError> {
+        super::submission_claim::claim(&self.core, request_id, claim)
+    }
+
+    fn submission_claim(
+        &self,
+        request_id: &str,
+    ) -> Result<Option<super::super::contract::SubmissionClaim>, StoreError> {
+        super::submission_claim::read(&self.core, request_id)
+    }
+
+    fn finish_submission_claim(
+        &self,
+        request_id: &str,
+        claim: super::super::contract::SubmissionClaim,
+    ) -> Result<(), StoreError> {
+        super::submission_claim::finish(&self.core, request_id, claim)
+    }
+
     fn lookup_submission(
         &self,
         request_id: &str,

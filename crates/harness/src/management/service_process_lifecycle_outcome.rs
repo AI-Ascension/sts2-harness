@@ -140,7 +140,7 @@ fn classify(view: &LifecycleOperationView, action_kind: &str) -> LifecycleClassi
 fn is_ambiguous(error: &ManagementError) -> bool {
     matches!(
         error.class,
-        ErrorClass::Unavailable | ErrorClass::Unresolved
+        ErrorClass::Unavailable | ErrorClass::Unresolved | ErrorClass::WriteStateUnknown
     ) || error.code == "process_lifecycle_outcome_unknown"
 }
 

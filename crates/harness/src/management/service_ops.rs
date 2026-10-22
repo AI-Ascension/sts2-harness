@@ -2,12 +2,10 @@
 
 use super::submission;
 use super::support::{
-    authorize, enforce_live_profile, recovery_admission, run_submission_response, validate_profile,
+    authorize, authorize_live_profile, enforce_live_profile, recovery_admission, validate_profile,
     verify_digest, waiting_reason,
 };
-use super::target_admission::{
-    bind_snapshot_admission, is_live_profile, validate_run_target_admission,
-};
+use super::target_admission::{bind_snapshot_admission, validate_run_target_admission};
 use super::*;
 
 impl ManagementService {
@@ -21,6 +19,7 @@ impl ManagementService {
         validate_identifier("request_id", &request.request_id)?;
         validate_identifier("instance_id", &request.instance_id)?;
         validate_profile(&request.profile)?;
+        authorize_live_profile(actor, &request.profile)?;
         validate_run_target_admission(&request)?;
         if request.definition.is_some() == request.artifact_id.is_some() {
             return Err(ManagementError::invalid(
@@ -31,31 +30,25 @@ impl ManagementService {
         if let Some(artifact_id) = &request.artifact_id {
             validate_identifier("artifact_id", artifact_id)?;
         }
-        enforce_live_profile(&self.capabilities, actor, &request.profile)?;
         let request_value = serde_json::to_value(&request)
             .map_err(|error| ManagementError::invalid("run_request_encode", error.to_string()))?;
         let request_digest = digest_value(&request_value)?;
+        self.submit_with_claim(actor, request, request_digest)
+    }
+
+    pub(super) fn submit_claimed_run(
+        &self,
+        actor: &AuthContext,
+        request: RunRequest,
+        request_digest: String,
+    ) -> Result<RunSubmissionResponse, ManagementError> {
+        enforce_live_profile(&self.capabilities, actor, &request.profile)?;
         match self
             .store
             .lookup_submission(&request.request_id, &request_digest)?
         {
             SubmissionLookup::Existing(snapshot) => {
-                if is_live_profile(&request.profile) {
-                    let recovery = self
-                        .execution
-                        .recovery_admission(&snapshot)
-                        .unwrap_or_else(|| recovery_admission(&snapshot));
-                    if matches!(
-                        recovery,
-                        RecoveryAdmission::NeedsOperator | RecoveryAdmission::Reconciling
-                    ) {
-                        return Err(ManagementError::unresolved(
-                            "live_submission_recovery_required",
-                            "a reserved live submission requires reconciliation before retry",
-                        ));
-                    }
-                }
-                return Ok(run_submission_response(&snapshot));
+                return self.recover_existing_run(actor, &request, &snapshot);
             }
             SubmissionLookup::Conflict => {
                 return Err(ManagementError::conflict(
@@ -255,7 +248,10 @@ impl ManagementService {
         ) {
             Ok(application) => application,
             Err(error) => {
-                if error.class != ErrorClass::Unresolved {
+                if !matches!(
+                    error.class,
+                    ErrorClass::Unresolved | ErrorClass::WriteStateUnknown
+                ) {
                     let _ = self.store.release_command(&request, &request_digest);
                 }
                 return Err(error);

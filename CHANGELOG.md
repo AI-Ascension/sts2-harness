@@ -12,6 +12,21 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
 
 ## Unreleased
 
+- **Management dispatch waits are bounded independently of HTTP reads and writes.**
+  A timed-out mutation returns owner-local `ascension.management-error/v2` with
+  `write_state_unknown`; retained workers and actor-bound V1 submission claims prevent
+  a repeated launch. Authenticated original-ID recovery exposes pending, submitted or
+  failed outcomes without revealing foreign claims. Non-consuming shutdown and a
+  bounded process registry retain supervision even after a caller drops its handle;
+  accepted workers keep their capacity until joined. Read-only POST validation,
+  inspection, diff, preflight and receipt lookup report `unavailable`, including when
+  their worker answer is lost. Existing errors retain their v1
+  envelope and status-derived HTTP classes; store failures remain explicitly `store`.
+  Arbitrary stalled-handler termination remains unfinished. Synthetic regressions
+  do not establish native cancellation or resolve the
+  intermittent Studio 502 cause. Refs #818; see
+  [ADR 0089](docs/decisions/0089-bounded-management-dispatch-recovery.md).
+
 - **Opt-in map context gains durable invocation receipts.** Schema 9 adds a bounded,
   metadata-only table and preserves existing execution data when migrating schema 8.
   The runtime records intent before the map read and binds the validated response to the

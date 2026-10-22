@@ -15,6 +15,22 @@ a crash, durable seed-generation, native-game, provider or cold-launch test.
 
 ## Purpose
 
+Management dispatch regressions force both a pre-validation stall and a post-reservation
+live-port stall. `management::http::dispatch_tests`, `management_submission_dispatch`,
+`management_submission_claim`, `management_submission_replay` and `management_recovery_contract`
+assert bounded served responses, retained worker capacity/claims, foreign-request hiding,
+current replay authorization, cached refusals, late completion with one invocation,
+durable restart and SQLite arbitration, explicit shutdown uncertainty, and the closed
+owner schemas. Repeated shutdown and dropped-handle cases retain the same supervisor
+and join all released workers; `management::http::supervision::tests` exercises the finite
+registry admission bound. Served validation, inspection, diff, target preflight and GET
+stalls report read-only unavailability, while disconnected response channels use the
+same reviewed route effects and preserve conservative write uncertainty for unknown routes.
+These synthetic cases establish no native/provider latency
+or cancellation guarantee; see [ADR 0089](decisions/0089-bounded-management-dispatch-recovery.md).
+Synchronous lifecycle/failure sinks still run outside the phase waits; the served-port stall
+tests do not establish termination of a connection blocked on diagnostic output.
+
 Tests must prove observable coordination, record, lifecycle, privacy, and artifact behavior rather
 than merely execute lines. Most harness logic must run without a game, provider, MCP server, gateway,
 socket, or wall clock. Controlled runtime lanes are separate and cannot be inferred from local tests.

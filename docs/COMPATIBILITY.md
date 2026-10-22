@@ -235,7 +235,7 @@ See `experiments/live-combat/README.md` for the exact scope.
 
 | Subject | Current state | Evidence |
 |---|---|---|
-| Harness foundation | Pure ports, coordinator seams, and deterministic fakes | Source-derived; offline tests pass |
+| Harness foundation and management | Pure ports, coordinator seams and deterministic fakes; bounded HTTP dispatch waits with error v2 for write uncertainty and actor-bound V1 submission recovery | Synthetic component checks; [ADR 0089](decisions/0089-bounded-management-dispatch-recovery.md) specifies closed schemas, store migration, bounded shutdown waits, retained supervision and consumer adoption. Non-consuming shutdown preserves its handle; a finite process registry retains abandoned supervisors until accepted work is joined. Read-only POSTs retain v1 unavailability. Pending writes may settle after timeout with their original identity; arbitrary stalled-handler termination remains unfinished, and native cancellation and deployed client adoption are unverified. |
 | MCP/gateway integration | Real component trace against synthetic downstream and exact host | Confirmed for the bounded runtime-v1 path; broader host compatibility unverified |
 | Provider/model execution | Ollama gemma4:31b-cloud via structured provider port | Confirmed for the isolated single-combat demo |
 | Direct game access | Outside the harness boundary; requests use MCP/gateway | No direct host authority; bounded indirect runtime-v1 probe only |
