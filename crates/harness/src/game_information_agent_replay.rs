@@ -34,6 +34,13 @@ pub fn run_lookup_replay_tool_loop<A: LookupAgentPort>(
             remaining_turns: remaining,
             optional_byte_budget: session.policy.optional_byte_budget,
         })?;
+        if matches!(
+            turn,
+            LookupTurn::ContentManifest { .. } | LookupTurn::ReadManifest { .. }
+        ) {
+            feedback = super::super::manifest::replay_agent(session, corpus, turn)?;
+            continue;
+        }
         match turn {
             LookupTurn::Decide { action_id } => {
                 return legal_actions
@@ -147,7 +154,9 @@ pub fn run_lookup_replay_tool_loop<A: LookupAgentPort>(
             // The archive retains MCP tool transcripts, not history: a history turn here has no
             // retained answer to replay, so replaying one would either invent an answer or read
             // live. It is a divergence rather than a fresh read presented as a replay.
-            LookupTurn::History { .. } => return Err(LookupError::Divergence),
+            LookupTurn::History { .. }
+            | LookupTurn::ContentManifest { .. }
+            | LookupTurn::ReadManifest { .. } => return Err(LookupError::Divergence),
         }
     }
     Err(LookupError::Bounds)
