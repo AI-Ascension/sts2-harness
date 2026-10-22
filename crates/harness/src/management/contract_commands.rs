@@ -10,9 +10,12 @@ use super::{EventClassification, RecoveryAdmission, RunEvent, RunSnapshot, Workf
 /// Reason code for a live command that faulted before it executed anything.
 ///
 /// The run is failed and the cursor does not move, so this response is `Applied` in the sense that
-/// the command was processed, while no operation was admitted. It is the one reason code that must
-/// not classify as settled.
+/// the command was processed, while no operation was admitted. It must not classify as settled.
 pub const LIVE_EXECUTION_FAILED: &str = "live_execution_failed";
+
+/// A context-owner pause refused a decision before provider exchange. The command was
+/// processed, but its existing cursor and live session remain available for explicit owner resume.
+pub const CONTEXT_OWNER_PAUSED: &str = "context_owner_paused";
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -75,12 +78,17 @@ impl CommandOutcome {
     /// A command that faults before executing anything is `Applied` with reason
     /// `LIVE_EXECUTION_FAILED`: the cursor does not move and no operation is admitted, so
     /// reporting `Settled` would present a failure as forward progress to any consumer that treats
-    /// a settled step as completed.
+    /// a settled step as completed. `CONTEXT_OWNER_PAUSED` also rejects the step without progress,
+    /// while retaining the current live cursor instead of failing the run.
     #[must_use]
     pub fn classification(&self, reason_code: &str) -> EventClassification {
         match self {
             Self::Pending => EventClassification::Unknown,
-            Self::Applied if reason_code == LIVE_EXECUTION_FAILED => EventClassification::Rejected,
+            Self::Applied
+                if matches!(reason_code, LIVE_EXECUTION_FAILED | CONTEXT_OWNER_PAUSED) =>
+            {
+                EventClassification::Rejected
+            }
             Self::Accepted | Self::Applied | Self::Duplicate => EventClassification::Settled,
         }
     }

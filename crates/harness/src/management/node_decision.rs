@@ -20,7 +20,9 @@
 use serde_json::json;
 use uuid::Uuid;
 
-use super::super::contract::{ErrorClass, PendingOperation, PendingOperationState};
+use super::super::contract::{
+    CONTEXT_OWNER_PAUSED, ErrorClass, PendingOperation, PendingOperationState,
+};
 use super::super::service::ManagementError;
 use super::execution_state::PendingDecision;
 use super::node::LiveNodeExecutor;
@@ -40,12 +42,15 @@ use crate::workflow::{
 ///
 /// Any other class is the boundary owner's statement that it refused before it could write, so the
 /// attempt is released and the refusal stays retryable by policy. The decision is deliberately not
-/// made from the error *code*: the served composition raises the pre-exchange refusal
+/// made from the error *code* alone: the served composition raises the pre-exchange refusal
 /// `context_render_source_unavailable` with the same code that its post-exchange re-assertion can
 /// raise, and releasing on that code alone would authorize a second paid exchange.
+/// Only a clean `Conflict` for the owner's pause gate receives a resumable cursor hold. The
+/// unknown-effect classes dominate even when a post-exchange check reports that same reason.
 pub(super) fn classify_decision_refusal(error: &ManagementError) -> RuntimeFault {
     match error.class {
         ErrorClass::Unresolved | ErrorClass::WriteStateUnknown => RuntimeFault::UnknownEffect,
+        ErrorClass::Conflict if error.code == CONTEXT_OWNER_PAUSED => RuntimeFault::ExecutorPaused,
         _ => RuntimeFault::ExecutorUnavailable,
     }
 }

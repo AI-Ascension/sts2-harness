@@ -52,6 +52,7 @@ include!("drafts_tests/http_support.rs");
 include!("drafts_tests/served_flow_tests.rs");
 include!("drafts_tests/grant_boundaries.rs");
 include!("drafts_tests/render_identity.rs");
+include!("drafts_tests/pause_render.rs");
 include!("drafts_tests/patch_http_validation.rs");
 include!("drafts_tests/publication_test_support.rs");
 include!("drafts_tests/publication_served_tests.rs");

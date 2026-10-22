@@ -33,6 +33,8 @@ pub enum RuntimeFault {
     GuardFailure,
     TypeMismatch,
     UnknownEffect,
+    /// An authoritative executor gate refused before any effect. The current cursor is retained.
+    ExecutorPaused,
     ExecutorUnavailable,
     ExecutorRejected,
     PlanRejected,
@@ -47,6 +49,7 @@ impl std::fmt::Display for RuntimeFault {
             Self::GuardFailure => "workflow guard evaluation failed",
             Self::TypeMismatch => "workflow node produced an unexpected value type",
             Self::UnknownEffect => "workflow mutation outcome is unresolved",
+            Self::ExecutorPaused => "workflow node executor is paused",
             Self::ExecutorUnavailable => "workflow node executor is unavailable",
             Self::ExecutorRejected => "workflow node executor rejected the operation",
             Self::PlanRejected => "workflow plan was rejected",

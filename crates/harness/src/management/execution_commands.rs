@@ -2,8 +2,8 @@
 
 use super::super::context_owner::{ContextBindingRequest, compose_context_owner_binding};
 use super::super::contract::{
-    CommandKind, CommandOutcome, ErrorClass, LIVE_EXECUTION_FAILED, PendingOperation,
-    WorkflowRunStatus,
+    CONTEXT_OWNER_PAUSED, CommandKind, CommandOutcome, ErrorClass, LIVE_EXECUTION_FAILED,
+    PendingOperation, WorkflowRunStatus,
 };
 use super::super::service::{CommandApplication, CommandContext, ManagementError};
 use crate::workflow::{RuntimeFault, RuntimeStatus};
@@ -157,6 +157,18 @@ pub(super) fn apply_command(
                             ));
                         }
                         (status, CommandOutcome::Applied, "step")
+                    }
+                    Err(RuntimeFault::ExecutorPaused) => {
+                        // The context owner refused before provider exchange. Preserve the
+                        // running cursor and live session; only that owner's Resume opens its
+                        // gate. Persist the clean refusal so the pre-effect intent is cleared.
+                        return Ok(application(
+                            run,
+                            WorkflowRunStatus::Running,
+                            CommandOutcome::Applied,
+                            CONTEXT_OWNER_PAUSED,
+                            revision,
+                        ));
                     }
                     Err(RuntimeFault::UnknownEffect) => {
                         let application = application(

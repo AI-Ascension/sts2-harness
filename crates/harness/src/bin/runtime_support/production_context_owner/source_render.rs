@@ -38,6 +38,8 @@ impl LiveContextRenderPort for Owner {
         context_ref: &str,
         config: &sts2_harness::ExoConfig,
     ) -> Result<ContextRenderSource, ManagementError> {
+        // Capturing trusted input is local and may refresh a held preview. Source resolution
+        // separately admits the owner gate before the session can prepare or dispatch inference.
         self.capture_trusted_render_context(
             actor,
             request,
