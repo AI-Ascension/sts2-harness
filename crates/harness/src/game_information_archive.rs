@@ -34,7 +34,7 @@ struct Manifest {
 impl LookupSession {
     /// Validates complete replay sources before publishing them through the existing encrypted
     /// store. A failed publication never returns a usable manifest.
-    pub fn export_archive(
+    pub(super) fn export_query_archive(
         &self,
         corpus: &MemoryCorpus,
         store: &mut DurableMemoryStore,
@@ -122,7 +122,7 @@ impl LookupSession {
     /// Restore against an owner-selected binding, approved policy and independently retained
     /// manifest digest. Capabilities are deliberately unnegotiated; replay has no transport.
     #[allow(clippy::too_many_arguments)]
-    pub fn import_archive(
+    pub(super) fn import_query_archive(
         bytes: &[u8],
         expected_sha256: &str,
         binding: LookupBinding,
@@ -158,7 +158,7 @@ impl LookupSession {
     }
 }
 
-fn collect_dependency(
+pub(super) fn collect_dependency(
     reference: &MemoryRef,
     corpus: &MemoryCorpus,
     entries: &mut BTreeMap<MemoryRef, MemoryEntry>,
