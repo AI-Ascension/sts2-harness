@@ -24,6 +24,9 @@ mod owned_api;
 #[path = "http_owned_backend.rs"]
 mod owned_backend;
 #[cfg(target_os = "linux")]
+#[path = "http_owned_child_wait.rs"]
+mod owned_child_wait;
+#[cfg(target_os = "linux")]
 #[path = "http_owned_deadline.rs"]
 mod owned_deadline;
 #[cfg(target_os = "linux")]
