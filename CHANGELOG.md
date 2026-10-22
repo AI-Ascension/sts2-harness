@@ -19,7 +19,8 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   never restores authority from history. Diagnostics run inside the backend budget; the
   `X-Ascension-Diagnostic-Loss` header reports dropped markers, including during retirement.
   An empty stderr alone cannot prove completeness. Generic embedding retains its earlier
-  supervision contract. The owned commands require Linux; see
+  supervision contract. The owned commands require Linux and refuse inherited ignored
+  `SIGCHLD` before spawning, preserving their child-exit proof; see
   [ADR 0091](docs/decisions/0091-owned-management-backend-termination.md). Refs #818.
 
 - **Production launch-observation failures retain retryability and prevent relaunch.**
