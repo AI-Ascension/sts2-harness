@@ -10,9 +10,8 @@ use self::support::{
 };
 use super::{
     CommandKind, CommandParameters, CommandRequest, DiffRequest, EnvironmentAuthenticator,
-    InspectRequest, MANAGEMENT_SCHEMA_VERSION, ManagementServer, OutputFormat, RunRequest,
-    ServerConfig, SqliteWorkflowStore, TargetAdmissionBinding, ValidateRequest,
-    validate_identifier,
+    InspectRequest, MANAGEMENT_SCHEMA_VERSION, OutputFormat, RunRequest, SqliteWorkflowStore,
+    TargetAdmissionBinding, ValidateRequest, validate_identifier,
 };
 
 #[path = "cli_control.rs"]
@@ -31,6 +30,9 @@ pub fn run_cli(args: Vec<String>) {
             }
         }
         Err(error) => {
+            if super::owned_management_supervisor_requested() {
+                process::exit(error.exit_code);
+            }
             if let Some(bytes) = error.json {
                 eprintln!("{}", String::from_utf8_lossy(&bytes));
             } else {
@@ -81,17 +83,15 @@ fn serve(args: &[String]) -> Result<CliOutput, CliFailure> {
     let listen = parse_address(options.get("listen"), "127.0.0.1:8787")?;
     let store_path = required_option(&options, "store")?;
     let auth_profile = required_option(&options, "auth-profile")?;
+    if !super::owned_management_backend_requested() {
+        super::serve_owned_management(listen).map_err(CliFailure::local)?;
+        return Ok(CliOutput(None));
+    }
     let authenticator =
         Arc::new(EnvironmentAuthenticator::from_profile(auth_profile).map_err(CliFailure::local)?);
     let store = SqliteWorkflowStore::open(store_path).map_err(CliFailure::local)?;
     let service = Arc::new(super::synthetic_sqlite_store(Arc::new(store)));
-    let config = ServerConfig::new(listen, authenticator).map_err(CliFailure::local)?;
-    let server = ManagementServer::start(config, service).map_err(CliFailure::local)?;
-    eprintln!(
-        "sts2-workflow serving authenticated loopback management API at {} mode=synthetic",
-        server.address()
-    );
-    server.wait().map_err(CliFailure::local)?;
+    super::http::serve_owned_backend(service, authenticator).map_err(CliFailure::local)?;
     Ok(CliOutput(None))
 }
 
