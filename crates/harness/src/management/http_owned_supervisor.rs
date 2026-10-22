@@ -76,6 +76,7 @@ pub(super) fn run() -> Result<(), HttpError> {
     if std::env::var(BACKEND_ROLE).as_deref() != Ok("supervisor") {
         return Err(fault("owned_supervisor_role"));
     }
+    super::owned_child_wait::require_waitable_children()?;
     // This dedicated, re-executed helper never runs embedding-host callbacks. Its panic
     // reporting cannot touch stderr: a blocked default hook would precede catch_unwind and
     // prevent descendant draining. The catch reports a fixed typed failure after actual reap;
