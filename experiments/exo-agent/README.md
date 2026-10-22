@@ -5,6 +5,11 @@ The current owned standard/fresh single-turn machine entrypoint is
 It is source/process support, not full episode admission or native/provider compatibility.
 The legacy configuration and broader future-integration descriptions below retain their own gates.
 
+The additive [`sts2-exo-package` installer and preflight](package/README.md) stages operator-reviewed
+inputs at immutable private paths and checks their actual bytes without inference. It preserves
+existing installations and returns an owner-readmission hold for rollback; it does not start a
+service, migrate an operation journal, or establish complete #147/#149 acceptance.
+
 This experiment is the harness-owned configuration and adapter seam for a reviewed Exo
 deployment. It does not contain an Exo checkout, model weights, credentials, game files, saves, or
 provider output. The checked-in Rust adapter accepts only a sanitized fair-play projection and the
