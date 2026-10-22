@@ -12,6 +12,16 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
 
 ## Unreleased
 
+- **The Linux management commands supervise actual handler termination.** A dedicated
+  helper reaps the stalled backend and its adopted descendants before replacement. The frontend
+  keeps independent phase budgets and reserves handler capacity for original-ID recovery.
+  Original claims and write uncertainty survive. Replacement loses in-memory live sessions and
+  never restores authority from history. Diagnostics run inside the backend budget; the
+  `X-Ascension-Diagnostic-Loss` header reports dropped markers, including during retirement.
+  An empty stderr alone cannot prove completeness. Generic embedding retains its earlier
+  supervision contract. The owned commands require Linux; see
+  [ADR 0091](docs/decisions/0091-owned-management-backend-termination.md). Refs #818.
+
 - **Production launch-observation failures retain retryability and prevent relaunch.**
   Retryable reads return v2 `write_state_unknown`; terminal reads return v1 `conflict` with owner `unresolved`.
   Original-ID recovery retains the run; provider construction stays fenced and cleanup errors stay distinct.
@@ -28,7 +38,7 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   inspection, diff, preflight and receipt lookup report `unavailable`, including when
   their worker answer is lost. Existing errors retain their v1
   envelope and status-derived HTTP classes; store failures remain explicitly `store`.
-  Arbitrary stalled-handler termination remains unfinished. Synthetic regressions
+  Arbitrary stalled-thread termination remains unavailable to generic embedding. Synthetic regressions
   do not establish native cancellation or resolve the
   intermittent Studio 502 cause. Refs #818; see
   [ADR 0089](docs/decisions/0089-bounded-management-dispatch-recovery.md).
@@ -83,8 +93,7 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   is a source-derived isolation correction, not a report of a CI flake or deployed incident.
   Production report text and behavior are unchanged. Refs #829, #826.
 
-- **Every management request the owner serves is now reported on stderr, so an empty owner
-  stderr is no longer ambiguous between a crash, a signal kill and a hang.** Studio's
+- **Management requests gain attributable lifecycle markers on stderr.** Studio's
   intermittent `submission_refused_502` had recurred eight times, and in every occurrence the
   decisive fact was that the owner process emitted nothing at all: `owner-stdout.log` was 0
   bytes, `owner-stderr.log` held 160 bytes that belonged to the Studio fixture rather than the
@@ -524,28 +533,3 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   It fails closed rather than wrongly, so the cost was availability, not correctness. A timeout
   kills the whole process group, not just the child, so helpers `gh` spawned do not survive
   holding the pipes. Refs #702.
-
-- **Own the `src/bin` loopback port until the child that binds it is spawned.**
-  `runtime_v3_game_information_entry_support.rs` drew its loopback address with a
-  `free_loopback_address()` that read `local_addr()` and dropped the listener inside the same
-  expression, so the port was unowned from that instant until the child bound it. That is the
-  `#673` defect; `#693` fixed it in `tests/support/**` only, and deliberately did not reach
-  `crates/harness/src/`.
-  It is reachable end to end. `run_runtime_entry` puts the address in the owner config as
-  `management_listen`, the runtime child binds it, and `wait_for_management` then polls
-  `ManagementClient` until the route answers -- so a port taken in the window left the child's
-  `bind` to fail with `EADDRINUSE` while the readiness check reported success, because it
-  connects to whatever is listening rather than to the child.
-  The two remaining call sites needed different fixes, and using one shape for both would have
-  been wrong. `peer_encoding_tests.rs` rebinds in-process on the very next statement, so it now
-  binds `:0` once and keeps that listener; there is no window to close and a reservation there
-  would be pure ceremony. `entry_tests.rs` hands the address to a child, so it holds the listener
-  in a `ReservedAddress` and releases it as the last statement before `Command::spawn()`.
-  `release` is idempotent, which is what lets the replay pass rebind one address across two
-  spawns without a separate flag. The allocator's prescribed fix -- returning the bound
-  `TcpListener` -- is the same framing the `LivePeers` entry below records as measured and
-  refuted on this kernel, so both sites take the reservation shape `#693` landed.
-  The regression tests include `the_pre_fix_shape_really_does_leave_the_port_unowned` as a
-  negative control, so the reservation test cannot pass for the wrong reason. No test here is
-  known to fail this way and none is claimed to; the fix is on the verified code shape and the
-  verified reachable call path. Refs #681, #673.
