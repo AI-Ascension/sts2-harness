@@ -2,6 +2,59 @@
 
 use super::*;
 
+fn managed_plan_input(generation: u64) -> DecisionInput {
+    let has_card = generation == 1;
+    let mut legal_actions = Vec::new();
+    let mut actions = Vec::new();
+    if has_card {
+        legal_actions.push(serde_json::json!({
+            "action_id":"combat.play-card",
+            "action":{"kind":"play_card","card_id":"card-1","target_id":"enemy-1"}
+        }));
+        actions.push(
+            EpisodeLegalAction::new("combat.play-card", crate::ActionKind::PlayCard)
+                .expect("play-card"),
+        );
+    }
+    legal_actions.push(serde_json::json!({
+        "action_id":"combat.end-turn",
+        "action":{"kind":"end_turn"}
+    }));
+    actions.push(
+        EpisodeLegalAction::new("combat.end-turn", crate::ActionKind::EndTurn).expect("end-turn"),
+    );
+    let observation = EpisodeObservation::new(
+        "combat-1",
+        generation,
+        EpisodeStage::Combat,
+        true,
+        false,
+        true,
+        serde_json::json!({
+            "state_id":"combat-1",
+            "generation":generation,
+            "visible_seed":"fixture",
+            "player":{
+                "hp":1,"max_hp":1,"energy":1,"gold":0,
+                "hand":if has_card { serde_json::json!([{"card_id":"card-1","name":"Strike","cost":1,"upgraded":false}]) } else { serde_json::json!([]) },
+                "deck":[],"discard":[],"exhaust":[]
+            },
+            "state":{"state":"combat","turn_index":1,"enemies":[]},
+            "legal_actions":legal_actions
+        }),
+    )
+    .expect("managed plan observation");
+    let actions = EpisodeLegalActionSet::new("combat-1", generation, actions)
+        .expect("managed plan legal actions");
+    DecisionInput::new(
+        crate::ModelExecutionId::new(generation).expect("managed plan execution"),
+        observation,
+        actions,
+        "test objective",
+        Vec::new(),
+    )
+}
+
 #[test]
 fn served_managed_render_does_not_reuse_a_plan_without_sending_new_prepared_bytes() {
     let (source, config) = render_fixture();
