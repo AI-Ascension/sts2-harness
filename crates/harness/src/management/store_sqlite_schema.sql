@@ -1,5 +1,12 @@
 PRAGMA foreign_keys = ON;
 
+-- Actor-bound intent precedes all submission ports. Pending claims survive
+-- timeout/restart and are never expired or converted into retry permission.
+CREATE TABLE IF NOT EXISTS management_submission_claims (
+    request_id TEXT PRIMARY KEY NOT NULL,
+    record BLOB NOT NULL CHECK(length(record) <= 16384)
+);
+
 CREATE TABLE IF NOT EXISTS management_submissions (
     request_id TEXT PRIMARY KEY NOT NULL,
     request_digest TEXT NOT NULL,

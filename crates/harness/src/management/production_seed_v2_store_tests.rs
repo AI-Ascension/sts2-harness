@@ -203,7 +203,7 @@ fn operation_lookup_keeps_one_sqlite_snapshot_across_candidate_commit() {
     assert_eq!(first_response.status, 503);
     let error: serde_json::Value =
         serde_json::from_slice(&first_response.body).expect("store error response");
-    assert_eq!(error["error"]["class"], "unavailable");
+    assert_eq!(error["error"]["class"], "store");
     assert_eq!(error["error"]["code"], "store_sqlite");
     first_server
         .server

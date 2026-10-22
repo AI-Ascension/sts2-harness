@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AI-Ascension/sts2-harness/contracts/management-recovery/error-v2.schema.json",
+  "title": "Harness management error v2",
+  "description": "The new write_state_unknown class does not extend the closed management/v1 envelope. Recover the original operation identity before resubmission.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "error"],
+  "properties": {
+    "schema_version": {"const": "ascension.management-error/v2"},
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["class", "code", "message"],
+      "properties": {
+        "class": {"const": "write_state_unknown"},
+        "code": {"type": "string", "minLength": 1},
+        "message": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

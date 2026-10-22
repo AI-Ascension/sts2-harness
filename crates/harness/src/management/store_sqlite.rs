@@ -14,6 +14,8 @@ use super::super::contract::{
 use super::{CommandAcceptance, CommandApplication, StoreError, SubmissionLookup, WorkflowStore};
 use super::{SeedBindingLookup, SeedBindingRecord, SeedOperationLookup, SeedOperationRecord};
 
+#[path = "store_sqlite_claim.rs"]
+mod claim;
 #[path = "store_sqlite_context_history.rs"]
 mod context_history;
 #[path = "store_sqlite_ops.rs"]
@@ -99,6 +101,29 @@ impl SqliteWorkflowStore {
 }
 
 impl WorkflowStore for SqliteWorkflowStore {
+    fn claim_submission(
+        &self,
+        request_id: &str,
+        proposed: super::super::contract::SubmissionClaim,
+    ) -> Result<super::super::contract::SubmissionClaimAcceptance, StoreError> {
+        claim::acquire(self, request_id, proposed)
+    }
+
+    fn submission_claim(
+        &self,
+        request_id: &str,
+    ) -> Result<Option<super::super::contract::SubmissionClaim>, StoreError> {
+        claim::read(self, request_id)
+    }
+
+    fn finish_submission_claim(
+        &self,
+        request_id: &str,
+        proposed: super::super::contract::SubmissionClaim,
+    ) -> Result<(), StoreError> {
+        claim::finish(self, request_id, proposed)
+    }
+
     fn supports_durable_seed_bindings(&self) -> bool {
         true
     }

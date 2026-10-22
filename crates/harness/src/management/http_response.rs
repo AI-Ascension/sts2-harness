@@ -240,21 +240,27 @@ impl HttpError {
             code: error.code,
             message: error.message,
             status,
+            class: Some(error.class),
         }
     }
 
     fn error_response(&self) -> ErrorResponse {
         ErrorResponse {
-            schema_version: super::super::contract::MANAGEMENT_SCHEMA_VERSION.to_owned(),
+            schema_version: if self.class == Some(ErrorClass::WriteStateUnknown) {
+                super::super::contract::MANAGEMENT_ERROR_V2
+            } else {
+                super::super::contract::MANAGEMENT_SCHEMA_VERSION
+            }
+            .to_owned(),
             error: super::super::contract::ErrorBody {
-                class: match self.status {
+                class: self.class.clone().unwrap_or(match self.status {
                     401 => ErrorClass::Authentication,
                     403 => ErrorClass::Forbidden,
                     409 => ErrorClass::Conflict,
                     422 => ErrorClass::Replay,
                     503 => ErrorClass::Unavailable,
                     _ => ErrorClass::InvalidInput,
-                },
+                }),
                 code: self.code.clone(),
                 message: self.message.clone(),
             },
@@ -300,6 +306,6 @@ fn management_status(class: &ErrorClass) -> u16 {
         | ErrorClass::Unresolved
         | ErrorClass::Budget => 409,
         ErrorClass::Replay => 422,
-        ErrorClass::Unavailable | ErrorClass::Store => 503,
+        ErrorClass::Unavailable | ErrorClass::Store | ErrorClass::WriteStateUnknown => 503,
     }
 }

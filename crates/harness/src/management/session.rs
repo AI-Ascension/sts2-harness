@@ -20,12 +20,12 @@ pub use factory::{LiveWorkflowFactory, LiveWorkflowSessionFactory};
 /// runtime and be billed. Their failures are therefore read as a report about *how far* the call
 /// got, and the held-attempt discipline acts on that report:
 ///
-/// * `Unresolved` means the session cannot rule out that the provider was reached and wrote. The
-///   caller keeps the paid attempt identity held.
+/// * `Unresolved` or `WriteStateUnknown` means the session cannot rule out a provider write.
+///   The caller keeps the paid attempt identity held.
 /// * Every other class means the session refused the request before it could reach the provider.
 ///   The caller releases the attempt and the refusal stays retryable under policy.
 ///
-/// An implementation that cannot prove it never reached the provider must report `Unresolved`.
+/// An implementation that cannot rule out a provider write must report one of those two classes.
 /// Reporting a clean refusal after an exchange authorizes the caller to pay for a second one.
 pub trait LiveWorkflowSession: Send {
     fn launch(&mut self) -> Result<(), ManagementError>;

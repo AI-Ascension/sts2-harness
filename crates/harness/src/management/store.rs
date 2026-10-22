@@ -17,6 +17,8 @@ mod memory;
 mod ops;
 #[path = "store_sqlite.rs"]
 mod sqlite;
+#[path = "store_submission_claim.rs"]
+mod submission_claim;
 
 #[path = "store_workflow.rs"]
 mod workflow;

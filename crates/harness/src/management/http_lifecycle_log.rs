@@ -217,6 +217,24 @@ impl RequestLifecycle {
         self.emit("request_end", &[], Some(status));
     }
 
+    /// Report the independently configured dispatch budget on this request's sequence.
+    pub(super) fn log_dispatch_budget(&self, budget: std::time::Duration) {
+        self.emit(
+            "dispatch_start",
+            &[format!("budget_ms={}", budget.as_millis())],
+            None,
+        );
+    }
+
+    /// This is a phase marker, not a second terminal request record or a cancellation.
+    pub(super) fn log_dispatch_timeout(&self) {
+        self.emit(
+            "dispatch_timeout",
+            &[code_label("dispatch_deadline_exceeded")],
+            None,
+        );
+    }
+
     /// Emit the terminal marker for a request whose computed response was **not**
     /// transmitted. This is the state that used to be indistinguishable from a hang.
     ///

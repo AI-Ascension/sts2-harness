@@ -111,6 +111,14 @@ fn dispatch_studio_or_run_route(
     actor: &super::super::auth::AuthContext,
     bearer: Option<&str>,
 ) -> Result<Value, ManagementError> {
+    if let Some(request_id) = request.path.strip_prefix("/v1/workflow-submissions/")
+        && request.method == "GET"
+        && request.query.is_empty()
+    {
+        return service
+            .submission_recovery(actor, request_id)
+            .and_then(|value| json_value(&value));
+    }
     if request.path.starts_with("/v2/workflow-runs/") {
         return dispatch_seed_v2_route(request, service, actor);
     }

@@ -30,7 +30,8 @@ use sts2_harness::management::{
     AuthContext, CleanupState, CommandAcceptance, CommandKind, CommandOutcome, CommandRequest,
     CommandResponse, ErrorClass, EventPage, EventType, ExportResponse, LiveWorkflowOptions,
     LiveWorkflowSessionFactory, ManagementService, MemoryWorkflowStore, RunEvent, RunSnapshot,
-    StoreCommandApplication, StoreError, SubmissionLookup, WorkflowRunStatus, WorkflowStore,
+    StoreCommandApplication, StoreError, SubmissionClaim, SubmissionClaimAcceptance,
+    SubmissionLookup, WorkflowRunStatus, WorkflowStore,
 };
 
 #[path = "support/live_workflow.rs"]
@@ -83,12 +84,14 @@ fn live_service_with_store(
 /// teardown one this site exists to surface.
 struct RefusingSnapshotStore {
     updates: Mutex<usize>,
+    claims: MemoryWorkflowStore,
 }
 
 impl RefusingSnapshotStore {
     fn new() -> Self {
         Self {
             updates: Mutex::new(0),
+            claims: MemoryWorkflowStore::new(),
         }
     }
 }
@@ -101,6 +104,26 @@ fn unused(surface: &str) -> StoreError {
 }
 
 impl WorkflowStore for RefusingSnapshotStore {
+    fn claim_submission(
+        &self,
+        request_id: &str,
+        claim: SubmissionClaim,
+    ) -> Result<SubmissionClaimAcceptance, StoreError> {
+        self.claims.claim_submission(request_id, claim)
+    }
+
+    fn submission_claim(&self, request_id: &str) -> Result<Option<SubmissionClaim>, StoreError> {
+        self.claims.submission_claim(request_id)
+    }
+
+    fn finish_submission_claim(
+        &self,
+        request_id: &str,
+        claim: SubmissionClaim,
+    ) -> Result<(), StoreError> {
+        self.claims.finish_submission_claim(request_id, claim)
+    }
+
     fn lookup_submission(
         &self,
         _request_id: &str,

@@ -138,6 +138,11 @@ pub use contract::{
     digest_value, inference_catalog_digest, validate_digest, validate_identifier,
 };
 pub use contract::{
+    MANAGEMENT_ERROR_V2, MAX_SUBMISSION_CLAIMS, SUBMISSION_SCHEMA_VERSION, SubmissionClaim,
+    SubmissionClaimAcceptance, SubmissionClaimOutcome, SubmissionRecoveryResponse,
+    SubmissionRecoveryState,
+};
+pub use contract::{
     MAX_SEED_LAUNCH_SETUPS_V2, MAX_SEED_SUPPORT_MODES, MAX_SEED_SUPPORT_TARGETS, SeedLaunchSetupV2,
     TARGET_SEED_SUPPORT_CATALOG_V2_SCHEMA, TargetSeedSupportCatalogV2, TargetSeedSupportV2,
 };

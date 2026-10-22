@@ -238,7 +238,7 @@ pub(super) fn exit_code_for_class(class: &ErrorClass) -> i32 {
         ErrorClass::Capability => 3,
         ErrorClass::Conflict => 4,
         ErrorClass::Forbidden | ErrorClass::Authentication => 5,
-        ErrorClass::Unresolved => 6,
+        ErrorClass::Unresolved | ErrorClass::WriteStateUnknown => 6,
         ErrorClass::Unavailable => 7,
         ErrorClass::Budget => 8,
         ErrorClass::Store => 9,

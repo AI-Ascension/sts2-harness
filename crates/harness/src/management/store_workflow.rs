@@ -9,6 +9,40 @@ use super::{
     SeedOperationLookup, SeedOperationRecord, StoreError, SubmissionLookup,
 };
 pub trait WorkflowStore: Send + Sync {
+    /// Claim the authenticated request before any external port or run write. An
+    /// existing claim is never expired, stolen, or implicitly retried after restart.
+    fn claim_submission(
+        &self,
+        _request_id: &str,
+        _claim: super::super::contract::SubmissionClaim,
+    ) -> Result<super::super::contract::SubmissionClaimAcceptance, StoreError> {
+        Err(StoreError::new(
+            "submission_claim_unavailable",
+            "submission claims are unsupported",
+        ))
+    }
+
+    fn submission_claim(
+        &self,
+        _request_id: &str,
+    ) -> Result<Option<super::super::contract::SubmissionClaim>, StoreError> {
+        Err(StoreError::new(
+            "submission_claim_unavailable",
+            "submission claims are unsupported",
+        ))
+    }
+
+    fn finish_submission_claim(
+        &self,
+        _request_id: &str,
+        _claim: super::super::contract::SubmissionClaim,
+    ) -> Result<(), StoreError> {
+        Err(StoreError::new(
+            "submission_claim_unavailable",
+            "submission claims are unsupported",
+        ))
+    }
+
     /// Whether this backend can atomically reserve seed candidates with their
     /// initial workflow run and durable submission identity.
     fn supports_durable_seed_bindings(&self) -> bool {

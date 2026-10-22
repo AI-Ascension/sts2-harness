@@ -11,6 +11,8 @@ use super::types::{CommandResponse, RunEvent, RunSnapshot};
 pub struct PersistedStore {
     pub schema_version: String,
     pub submissions: BTreeMap<String, SubmissionIndex>,
+    #[serde(default)]
+    pub submission_claims: BTreeMap<String, super::SubmissionClaim>,
     pub runs: BTreeMap<String, PersistedRun>,
 }
 
@@ -45,6 +47,7 @@ impl PersistedStore {
         Self {
             schema_version: MANAGEMENT_SCHEMA_VERSION.to_owned(),
             submissions: BTreeMap::new(),
+            submission_claims: BTreeMap::new(),
             runs: BTreeMap::new(),
         }
     }

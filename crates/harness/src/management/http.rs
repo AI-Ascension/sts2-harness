@@ -10,6 +10,8 @@ use std::time::Duration;
 
 #[path = "http_client.rs"]
 mod client;
+#[path = "http_dispatch.rs"]
+mod dispatch_executor;
 #[path = "http_failure_report.rs"]
 mod failure_report;
 #[path = "http_lifecycle.rs"]
@@ -36,6 +38,8 @@ mod routes_memory_owner;
 mod routes_policy;
 #[path = "http_routes_run.rs"]
 mod routes_run;
+#[path = "http_server_loop.rs"]
+mod server_loop;
 
 pub use failure_report::{ManagementFailurePort, ManagementFailureSink};
 use lifecycle::serve_reported;
@@ -44,12 +48,16 @@ use response::{
     auth_http_error, io_http_error, parse_bearer, validate_loopback, wake_listener,
     write_raw_status,
 };
+use server_loop::run_server_loop;
 
 pub use client::{ClientResponse, ManagementClient};
 
 #[cfg(test)]
 #[path = "http_connection_tests.rs"]
 mod connection_tests;
+#[cfg(test)]
+#[path = "http_dispatch_tests.rs"]
+mod dispatch_tests;
 #[cfg(test)]
 #[path = "http_lifecycle_log_server_tests.rs"]
 mod lifecycle_log_server_tests;
@@ -72,6 +80,8 @@ pub struct HttpLimits {
     pub max_path_bytes: usize,
     pub max_connections: usize,
     pub deadline: Duration,
+    /// Independent dispatch budget; read/write each retain `deadline`.
+    pub dispatch_deadline: Duration,
 }
 
 impl Default for HttpLimits {
@@ -83,6 +93,7 @@ impl Default for HttpLimits {
             max_path_bytes: MAX_PATH_BYTES,
             max_connections: MAX_CONNECTIONS,
             deadline: Duration::from_millis(REQUEST_DEADLINE_MILLIS),
+            dispatch_deadline: Duration::from_secs(30),
         }
     }
 }
@@ -100,6 +111,8 @@ impl HttpLimits {
             || self.max_connections == 0
             || self.max_connections > MAX_CONNECTIONS
             || self.deadline.is_zero()
+            || self.dispatch_deadline.is_zero()
+            || self.dispatch_deadline > Duration::from_secs(300)
         {
             return Err(HttpError::new(
                 "invalid_limits",
@@ -150,6 +163,7 @@ pub struct HttpError {
     pub code: String,
     pub message: String,
     status: u16,
+    class: Option<super::contract::ErrorClass>,
 }
 
 impl HttpError {
@@ -158,6 +172,7 @@ impl HttpError {
             code: code.into(),
             message: message.into(),
             status: 400,
+            class: None,
         }
     }
 
@@ -266,72 +281,6 @@ impl ManagementServer {
             join: Some(join),
         })
     }
-}
-
-fn run_server_loop(
-    listener: TcpListener,
-    service: Arc<ManagementService>,
-    authenticator: Arc<dyn Authenticator>,
-    limits: HttpLimits,
-    stop: Arc<AtomicBool>,
-    failure_sink: ManagementFailureSink,
-    lifecycle_log: RequestLifecycleLog,
-) -> Result<(), HttpError> {
-    let active = Arc::new(AtomicUsize::new(0));
-    let workers: Arc<Mutex<Vec<JoinHandle<()>>>> = Arc::new(Mutex::new(Vec::new()));
-    loop {
-        if stop.load(Ordering::Acquire) {
-            break;
-        }
-        match listener.accept() {
-            Ok((stream, peer)) => {
-                let current = active.load(Ordering::Acquire);
-                if current >= limits.max_connections {
-                    let _ = write_raw_status(stream, 503, "Service Unavailable", &[]);
-                    continue;
-                }
-                active.fetch_add(1, Ordering::AcqRel);
-                let service = Arc::clone(&service);
-                let authenticator = Arc::clone(&authenticator);
-                let active_for_worker = Arc::clone(&active);
-                let worker_limits = limits.clone();
-                let worker_failure_sink = failure_sink.clone();
-                let worker_log = lifecycle_log.clone();
-                let worker = thread::Builder::new()
-                    .name("sts2-management-connection".to_owned())
-                    .spawn(move || {
-                        // The only evidence that the owner could not deliver an answer it had
-                        // already computed: the socket is gone, so the peer can no longer be told,
-                        // and that silence is what made #816 undiagnosable.
-                        let failed = serve_reported(
-                            stream,
-                            &service,
-                            &*authenticator,
-                            &worker_limits,
-                            &worker_log,
-                        );
-                        if let Err((request, error)) = failed {
-                            worker_failure_sink.report_connection(peer, request.as_deref(), &error);
-                        }
-                        active_for_worker.fetch_sub(1, Ordering::AcqRel);
-                    })
-                    .map_err(io_http_error)?;
-                if let Ok(mut handles) = workers.lock() {
-                    handles.push(worker);
-                }
-            }
-            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
-                thread::sleep(Duration::from_millis(10));
-            }
-            Err(error) => return Err(io_http_error(error)),
-        }
-    }
-    if let Ok(mut handles) = workers.lock() {
-        for handle in handles.drain(..) {
-            let _ = handle.join();
-        }
-    }
-    Ok(())
 }
 
 #[derive(Clone, Debug)]

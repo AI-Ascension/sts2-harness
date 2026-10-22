@@ -1,0 +1,61 @@
+{
+  "error": {
+    "schema_version": "ascension.management-error/v2",
+    "error": {
+      "class": "write_state_unknown",
+      "code": "dispatch_deadline_exceeded",
+      "message": "dispatch wait expired; recover the original request or operation identity before resubmission"
+    }
+  },
+  "recovery": [
+    {
+      "schema_version": "ascension.workflow-submission/v1",
+      "request_id": "request-missing",
+      "state": "missing",
+      "workflow_run_id": null,
+      "response": null,
+      "error": null
+    },
+    {
+      "schema_version": "ascension.workflow-submission/v1",
+      "request_id": "request-pending",
+      "state": "pending",
+      "workflow_run_id": null,
+      "response": null,
+      "error": null
+    },
+    {
+      "schema_version": "ascension.workflow-submission/v1",
+      "request_id": "request-reserved",
+      "state": "pending",
+      "workflow_run_id": "run-reserved",
+      "response": null,
+      "error": null
+    },
+    {
+      "schema_version": "ascension.workflow-submission/v1",
+      "request_id": "request-submitted",
+      "state": "submitted",
+      "workflow_run_id": "run-submitted",
+      "response": {
+        "schema_version": "ascension.management/v1",
+        "workflow_run_id": "run-submitted",
+        "run_revision": 1,
+        "status": "running"
+      },
+      "error": null
+    },
+    {
+      "schema_version": "ascension.workflow-submission/v1",
+      "request_id": "request-failed",
+      "state": "failed",
+      "workflow_run_id": "run-failed",
+      "response": null,
+      "error": {
+        "class": "unresolved",
+        "code": "live_launch_failed",
+        "message": "original admission failed; inspect the reserved run before further action"
+      }
+    }
+  ]
+}

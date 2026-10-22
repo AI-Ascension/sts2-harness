@@ -27,7 +27,9 @@ impl ManagementClient {
         Ok(Self {
             address,
             bearer_token,
-            deadline: Duration::from_millis(REQUEST_DEADLINE_MILLIS),
+            // Cover all independent server phases plus a bounded scheduling margin.
+            deadline: HttpLimits::default().dispatch_deadline
+                + Duration::from_millis(3 * REQUEST_DEADLINE_MILLIS),
         })
     }
 
@@ -100,8 +102,9 @@ impl ManagementClient {
             ));
         }
         let deadline = Instant::now() + self.deadline;
+        let transport_budget = Duration::from_millis(REQUEST_DEADLINE_MILLIS);
         let mut stream =
-            TcpStream::connect_timeout(&self.address, self.deadline).map_err(io_http_error)?;
+            TcpStream::connect_timeout(&self.address, transport_budget).map_err(io_http_error)?;
         let head = request_head(
             self.address,
             &self.bearer_token,
@@ -112,7 +115,7 @@ impl ManagementClient {
         );
         let mut request = head.into_bytes();
         request.extend_from_slice(body);
-        write_with_deadline(&mut stream, &request, deadline)?;
+        write_with_deadline(&mut stream, &request, Instant::now() + transport_budget)?;
         read_client_response(&mut stream, deadline)
     }
 }
