@@ -7,6 +7,9 @@ use std::sync::mpsc::{self, RecvTimeoutError};
 use std::time::Instant;
 
 use super::*;
+use route_effects::RouteEffect;
+
+type DispatchOutcome = std::thread::Result<Result<HttpResponse, HttpError>>;
 
 pub(super) struct DispatchExecutor {
     workers: Mutex<Vec<(bool, JoinHandle<()>)>>,
@@ -27,11 +30,10 @@ impl DispatchExecutor {
         service: Arc<ManagementService>,
         authenticator: Arc<dyn Authenticator>,
         budget: Duration,
-    ) -> std::thread::Result<Result<HttpResponse, HttpError>> {
+    ) -> DispatchOutcome {
         let deadline = Instant::now() + budget;
-        let mutation = request.method != "GET";
-        let recovery =
-            request.method == "GET" && request.path.starts_with("/v1/workflow-submissions/");
+        let effect = route_effects::classify(&request);
+        let recovery = route_effects::is_submission_recovery(&request);
         let (sender, receiver) = mpsc::sync_channel(1);
         let mut workers = match self.workers.lock() {
             Ok(workers) => workers,
@@ -61,46 +63,47 @@ impl DispatchExecutor {
             Err(_) => return Ok(Err(unavailable("dispatch_worker_unavailable"))),
         }
         drop(workers);
-        match receiver.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
-            Ok(outcome) => outcome,
-            Err(RecvTimeoutError::Timeout) => Ok(Err(timeout(mutation))),
-            Err(RecvTimeoutError::Disconnected) => Ok(Err(HttpError::from_management(
-                ManagementError::write_state_unknown(
-                    "dispatch_worker_lost",
-                    "dispatch outcome is unknown; recover the original operation identity",
-                ),
-            ))),
-        }
+        await_outcome(receiver, deadline, effect)
     }
 
-    /// Never join an uncooperative synchronous port indefinitely. Finished work
-    /// is joined; remaining work is reported explicitly and keeps its claims.
-    pub(super) fn shutdown(&self) -> Result<(), HttpError> {
-        let deadline = Instant::now() + Duration::from_millis(100);
+    /// The retained server supervisor owns this drain. Public shutdown waits independently and
+    /// can return pending; it never discards this worker vector or releases accepted capacity.
+    pub(super) fn drain(&self) {
         loop {
-            if self.reap_shutdown()? {
-                return Ok(());
+            // Poison refuses new admission, but does not invalidate Rust's owned JoinHandles.
+            // Teardown still owns and joins every retained handle instead of detaching them.
+            let mut workers = self
+                .workers
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            reap(&mut workers);
+            if workers.is_empty() {
+                return;
             }
-            if Instant::now() >= deadline {
-                break;
-            }
+            drop(workers);
             thread::sleep(Duration::from_millis(1));
         }
-        Err(HttpError::from_management(
-            ManagementError::write_state_unknown(
-                "dispatch_shutdown_pending",
-                "synchronous dispatch work remains; its writes are not cancelled and require reconciliation",
-            ),
-        ))
     }
 
-    fn reap_shutdown(&self) -> Result<bool, HttpError> {
+    pub(super) fn pending(&self) -> Result<usize, HttpError> {
         let mut workers = self
             .workers
             .lock()
             .map_err(|_| unavailable("dispatch_owner_poisoned"))?;
         reap(&mut workers);
-        Ok(workers.is_empty())
+        Ok(workers.len())
+    }
+}
+
+fn await_outcome(
+    receiver: mpsc::Receiver<DispatchOutcome>,
+    deadline: Instant,
+    effect: RouteEffect,
+) -> DispatchOutcome {
+    match receiver.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
+        Ok(outcome) => outcome,
+        Err(RecvTimeoutError::Timeout) => Ok(Err(wait_failed(effect, false))),
+        Err(RecvTimeoutError::Disconnected) => Ok(Err(wait_failed(effect, true))),
     }
 }
 
@@ -118,21 +121,28 @@ fn reap(workers: &mut Vec<(bool, JoinHandle<()>)>) {
 fn unavailable(code: &'static str) -> HttpError {
     HttpError::from_management(ManagementError::unavailable(
         code,
-        "management dispatch is unavailable; no handler was started",
+        "management dispatch is unavailable; no additional handler was started",
     ))
 }
 
-fn timeout(mutation: bool) -> HttpError {
-    let error = if mutation {
-        ManagementError::write_state_unknown(
-            "dispatch_deadline_exceeded",
-            "dispatch wait expired; recover the original request or operation identity before resubmission",
-        )
+fn wait_failed(effect: RouteEffect, disconnected: bool) -> HttpError {
+    let code = if disconnected {
+        "dispatch_worker_lost"
     } else {
-        ManagementError::unavailable(
-            "dispatch_deadline_exceeded",
-            "read-only dispatch wait expired",
-        )
+        "dispatch_deadline_exceeded"
+    };
+    let error = match effect {
+        RouteEffect::MayWrite => ManagementError::write_state_unknown(
+            code,
+            "dispatch outcome is unknown; recover the original request or operation identity before resubmission",
+        ),
+        RouteEffect::ReadOnly => {
+            ManagementError::unavailable(code, "read-only dispatch did not return an answer")
+        }
     };
     HttpError::from_management(error)
 }
+
+#[cfg(test)]
+#[path = "http_dispatch_outcome_tests.rs"]
+mod tests;
