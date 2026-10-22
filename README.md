@@ -216,6 +216,8 @@ For user-selected Ollama models, see [Ollama model selection](docs/OLLAMA_MODEL_
 
 The current management HTTP commands, `sts2-workflow serve` and
 `sts2-harness-runtime serve-workflow`, require Linux with accessible procfs and pidfd support.
+They refuse inherited ignored `SIGCHLD` before spawning because cleanup requires waitable
+child exit statuses; launch them with default child-wait semantics.
 They start an owned backend process so a stalled handler can be terminated and reaped before
 replacement. On Windows and other platforms these two commands return
 `owned_management_platform`; they no longer start the earlier in-process server. Other runtime
