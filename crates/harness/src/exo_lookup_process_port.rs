@@ -57,17 +57,44 @@ impl LookupAgentPort for ExoLookupProcess {
                     // widens the surface instead of trading the shipped capability away.
                     if !matches!(
                         self.profile,
-                        ExoLookupProfile::Bootstrap | ExoLookupProfile::History
+                        ExoLookupProfile::Bootstrap
+                            | ExoLookupProfile::History
+                            | ExoLookupProfile::ContentManifest
                     ) {
                         return Err(LookupError::Invalid);
                     }
                     crate::exo_lookup_wire::bootstrap_turn(arguments)
                 }
                 ExoLookupPayload::History { arguments } => {
-                    if self.profile != ExoLookupProfile::History {
+                    if !matches!(
+                        self.profile,
+                        ExoLookupProfile::History | ExoLookupProfile::ContentManifest
+                    ) {
                         return Err(LookupError::Invalid);
                     }
                     crate::game_information::history::turn(arguments)
+                }
+                ExoLookupPayload::ContentManifest { operation_id }
+                    if self.profile == ExoLookupProfile::ContentManifest
+                        && !operation_id.is_empty()
+                        && operation_id.len() <= 64
+                        && operation_id.bytes().all(|byte| {
+                            byte.is_ascii_alphanumeric() || b"._:-".contains(&byte)
+                        }) =>
+                {
+                    Ok(LookupTurn::ContentManifest { operation_id })
+                }
+                ExoLookupPayload::ReadManifest {
+                    record_ordinal,
+                    offset,
+                } if self.profile == ExoLookupProfile::ContentManifest
+                    && record_ordinal < crate::game_information::manifest::MAX_RECORDS
+                    && offset <= crate::game_information::manifest::MAX_RESPONSE_BYTES =>
+                {
+                    Ok(LookupTurn::ReadManifest {
+                        record_ordinal,
+                        offset,
+                    })
                 }
                 ExoLookupPayload::ReadRetained {
                     record_ordinal,
