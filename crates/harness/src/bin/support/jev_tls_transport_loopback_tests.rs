@@ -19,12 +19,13 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use super::tls::budget::DeadlineSocket;
 use super::tls::client_config;
 use super::tls::session::{connection_over, loopback_client_config};
 use super::tls_loopback_fixture::{LOOPBACK_CA, LOOPBACK_LEAF, LOOPBACK_LEAF_KEY};
 
 /// A server configuration presenting the fixture leaf, built the way a peer would build one.
-fn server_config() -> Arc<rustls::ServerConfig> {
+pub(super) fn server_config() -> Arc<rustls::ServerConfig> {
     let provider = rustls::crypto::ring::default_provider();
     let certified = rustls::sign::CertifiedKey::from_der(
         vec![
@@ -89,7 +90,8 @@ fn handshake_against(
     // are about the client's refusal -- and a fixture that waits out a long socket timeout turns a
     // 3ms refusal into a half-minute test. A peer that hits it has simply outlived the exchange.
     let server = serve_with_timeout(listener, peer, Duration::from_secs(5));
-    let mut stream = TcpStream::connect(address).expect("the loopback peer accepts a connection");
+    let stream = TcpStream::connect(address).expect("the loopback peer accepts a connection");
+    let mut stream = DeadlineSocket::new(stream, Instant::now());
     // `trusted` picks the store, and only the store. The handshake loop, the server name, and the
     // deadline are the transport's own, so the positive and negative cases differ in exactly the
     // one way they claim to: whether the fixture CA is in the trust store.
@@ -98,9 +100,10 @@ fn handshake_against(
     } else {
         client_config().expect("the pinned root store builds a client config")
     };
-    let outcome = connection_over(&mut stream, config, Instant::now())
+    let outcome = connection_over(&mut stream, config)
         .map(|_| ())
         .map_err(|error| error.to_string());
+    drop(stream);
     let _ = server.join();
     outcome
 }
@@ -192,24 +195,31 @@ fn a_peer_that_closes_during_the_handshake_is_refused() {
 
 /// A peer that accepts the connection and then says nothing is bounded, not waited on.
 ///
-/// The point is that the handshake inherits the whole-exchange deadline instead of getting a fresh
-/// allowance per read. The assertion is on the refusal message, not on a wall-clock bound: a test
-/// that asserted an elapsed time would be a flaky test on a loaded machine, and the deadline itself
-/// is a constant already asserted elsewhere. What is being proved is that the wait is *cut short*
-/// -- an accepted socket that never speaks produces the deadline refusal and returns.
+/// The peer consumes the ClientHello but sends nothing and stays open until the client closes.
+/// Its five-second safety timeout would produce a truncation refusal, so only the client's
+/// remaining one second of the existing 100-second budget can satisfy the deadline assertion.
 #[test]
 fn a_peer_that_never_answers_the_handshake_is_refused_rather_than_waited_on() {
-    let outcome = handshake_against(
-        |stream| {
-            // Hold the connection open without writing. The client's read timeout has to end this.
-            thread::sleep(Duration::from_secs(2));
-            let _ = stream.shutdown(std::net::Shutdown::Both);
+    let listener = loopback_listener();
+    let address = listener.local_addr().expect("loopback address");
+    let peer = serve_with_timeout(
+        listener,
+        |mut stream| {
+            let _ = std::io::copy(&mut stream, &mut std::io::sink());
         },
-        true,
+        Duration::from_secs(5),
     );
+    let socket = TcpStream::connect(address).expect("connect to silent peer");
+    let started = Instant::now() - Duration::from_secs(99);
+    let mut socket = DeadlineSocket::new(socket, started);
+    let outcome = connection_over(&mut socket, loopback_client_config());
+    drop(socket);
+    peer.join().expect("silent peer joined after client close");
     assert_eq!(
-        outcome.expect_err("a peer that never answers must be refused"),
-        "the provider closed the connection during the TLS handshake",
-        "the wait for a silent peer has to be cut by the deadline, not run to completion"
+        outcome
+            .expect_err("a peer that never answers must be refused")
+            .to_string(),
+        "the provider exchange exceeded its deadline",
+        "peer closure must not stand in for the client's deadline"
     );
 }
