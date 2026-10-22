@@ -70,6 +70,30 @@ provider port is called. The workflow marks that execution failed and cleans up 
 the same run cannot be retried after that terminal failure. Publish and adopt before the decision
 Step, or submit a fresh run if a missing-source Step already failed.
 
+### Context-owner pause at the decision boundary
+
+The current context control authority also admits each source resolution through `admit_plan`.
+A latched pause refuses the decision before provider preparation or exchange, and the existing
+last pre-write source check repeats that admission. A stopped owner never acquires the temporary
+pause behavior. Pausing after the provider boundary has been admitted cannot cancel that exchange;
+the post-exchange check reports an unresolved outcome and retains its original attempt identity.
+
+The trusted host-thread input and admitted provider configuration may still be captured while
+paused. This bounded owner-local capture is necessary to preview a draft against the paused
+boundary; it grants no provider, game, or resume authority. It occurs before source admission and
+remains subject to the exact actor, run, binding, observation, catalog, configuration, and lease
+checks. The preview route itself continues to have no provider write port.
+
+A clean pre-exchange `Conflict` with reason `context_owner_paused` holds the existing decision
+cursor without cleanup, provider-call or node-step consumption, or an outstanding paid attempt.
+The command is durably processed as the existing `Applied` outcome with the existing `Rejected`
+event classification and that reason. The workflow runtime remains `Running`: the context owner
+alone owns this gate, independently of workflow pause/resume commands. Repeated Steps recheck the
+same owner gate; only an explicit successful context-owner Resume permits a later Step to render
+and infer. An exact duplicate command recovers its recorded response and does not prepare again.
+Every `Unresolved` or `WriteStateUnknown` error remains an unknown effect, including one carrying
+the pause reason after exchange. No new wire enum, route, or receipt schema is introduced.
+
 ## Compatibility
 
 The metadata-only owner configuration remains available and does not claim managed content. The
