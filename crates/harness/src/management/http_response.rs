@@ -253,14 +253,20 @@ impl HttpError {
             }
             .to_owned(),
             error: super::super::contract::ErrorBody {
-                class: self.class.clone().unwrap_or(match self.status {
-                    401 => ErrorClass::Authentication,
-                    403 => ErrorClass::Forbidden,
-                    409 => ErrorClass::Conflict,
-                    422 => ErrorClass::Replay,
-                    503 => ErrorClass::Unavailable,
-                    _ => ErrorClass::InvalidInput,
-                }),
+                // Existing HTTP v1 clients consume the status-derived class,
+                // which is distinct from the more precise retained owner error.
+                class: match self.class.as_ref() {
+                    Some(ErrorClass::WriteStateUnknown) => ErrorClass::WriteStateUnknown,
+                    Some(ErrorClass::Store) => ErrorClass::Store,
+                    _ => match self.status {
+                        401 => ErrorClass::Authentication,
+                        403 => ErrorClass::Forbidden,
+                        409 => ErrorClass::Conflict,
+                        422 => ErrorClass::Replay,
+                        503 => ErrorClass::Unavailable,
+                        _ => ErrorClass::InvalidInput,
+                    },
+                },
                 code: self.code.clone(),
                 message: self.message.clone(),
             },
