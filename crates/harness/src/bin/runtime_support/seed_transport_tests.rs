@@ -110,6 +110,7 @@ fn plan_requires_explicit_contiguous_ordinals_and_bounded_seed() {
 #[test]
 fn reservation_restarts_in_reconcile_only_mode_and_rejects_conflict() {
     let config = SeedTransportConfig {
+        admission: super::validation::SeedPlanAdmission::NewOrRecovery,
         plan_digest: "a".repeat(64),
         entry_ordinal: 0,
         requested_seed: String::from("S2TSWF0651"),

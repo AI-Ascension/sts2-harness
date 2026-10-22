@@ -5,7 +5,7 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::PathBuf;
 
-use super::validation::required;
+use super::validation::{SeedPlanAdmission, required};
 use super::{ReservationRecord, SEEDED_RUN_MAX_GENERATION, SeedReservation, SeedTransportConfig};
 
 impl SeedReservation {
@@ -71,13 +71,16 @@ impl SeedTransportConfig {
         if generation > SEEDED_RUN_MAX_GENERATION {
             return Err(String::from("seed request generation exceeds its bound"));
         }
-        let raw_path = required("STS2_SEED_RESERVATION_PATH")?;
-        if raw_path.len() > 512 || raw_path.chars().any(char::is_control) {
-            return Err(String::from(
-                "STS2_SEED_RESERVATION_PATH is unsafe or oversized",
-            ));
+        self.reserve_at(reservation_path()?, generation)
+    }
+
+    /// Refuse new noncanonical plans before gateway allocation or MCP startup.
+    /// The reservation is checked again at use; this read grants no new start.
+    pub(super) fn validate_admission(&self) -> Result<(), String> {
+        if self.admission == SeedPlanAdmission::RecoveryOnly {
+            self.read_existing(reservation_path()?)?;
         }
-        self.reserve_at(PathBuf::from(raw_path), generation)
+        Ok(())
     }
 
     pub(super) fn reserve_at(
@@ -85,6 +88,9 @@ impl SeedTransportConfig {
         path: PathBuf,
         generation: u64,
     ) -> Result<SeedReservation, String> {
+        if self.admission == SeedPlanAdmission::RecoveryOnly {
+            return self.read_existing(path);
+        }
         let record = ReservationRecord {
             protocol: String::from("seeded-run-reservation-v1"),
             operation_id: self.operation_id.clone(),
@@ -112,48 +118,62 @@ impl SeedTransportConfig {
                 })
             }
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-                let bytes = fs::read(&path)
-                    .map_err(|read_error| format!("seed reservation read failed: {read_error}"))?;
-                let existing: ReservationRecord = serde_json::from_slice(&bytes)
-                    .map_err(|parse_error| format!("seed reservation is invalid: {parse_error}"))?;
-                if existing.protocol != "seeded-run-reservation-v1"
-                    || existing.operation_id != self.operation_id
-                    || existing.plan_digest != self.plan_digest
-                    || existing.entry_ordinal != self.entry_ordinal
-                    || existing.requested_seed != self.requested_seed
-                    || existing.run_mode != self.run_mode
-                    || existing.context_digest != self.context_digest()
-                    || existing.selected_context != self.selected_context()
-                {
-                    return Err(String::from(
-                        "seed reservation identity conflicts with the requested operation",
-                    ));
-                }
-                if existing.generation > SEEDED_RUN_MAX_GENERATION {
-                    return Err(String::from(
-                        "seed reservation generation exceeds its safe integer bound",
-                    ));
-                }
-                if !matches!(
-                    existing.status.as_str(),
-                    "start_pending" | "unknown" | "settled"
-                ) {
-                    return Err(String::from(
-                        "seed reservation has an unsupported lifecycle state",
-                    ));
-                }
-                if (existing.status == "settled") != existing.settled_receipt.is_some() {
-                    return Err(String::from(
-                        "seed reservation lifecycle receipt is inconsistent",
-                    ));
-                }
-                Ok(SeedReservation {
-                    path,
-                    generation: existing.generation,
-                    resumed: true,
-                })
+                self.read_existing(path)
             }
             Err(error) => Err(format!("seed reservation create failed: {error}")),
         }
     }
+
+    fn read_existing(&self, path: PathBuf) -> Result<SeedReservation, String> {
+        let bytes = fs::read(&path)
+            .map_err(|error| format!("existing seed reservation is required: {error}"))?;
+        let existing: ReservationRecord = serde_json::from_slice(&bytes)
+            .map_err(|error| format!("seed reservation is invalid: {error}"))?;
+        if existing.protocol != "seeded-run-reservation-v1"
+            || existing.operation_id != self.operation_id
+            || existing.plan_digest != self.plan_digest
+            || existing.entry_ordinal != self.entry_ordinal
+            || existing.requested_seed != self.requested_seed
+            || existing.run_mode != self.run_mode
+            || existing.context_digest != self.context_digest()
+            || existing.selected_context != self.selected_context()
+        {
+            return Err(String::from(
+                "seed reservation identity conflicts with the requested operation",
+            ));
+        }
+        if existing.generation > SEEDED_RUN_MAX_GENERATION {
+            return Err(String::from(
+                "seed reservation generation exceeds its safe integer bound",
+            ));
+        }
+        if !matches!(
+            existing.status.as_str(),
+            "start_pending" | "unknown" | "settled"
+        ) {
+            return Err(String::from(
+                "seed reservation has an unsupported lifecycle state",
+            ));
+        }
+        if (existing.status == "settled") != existing.settled_receipt.is_some() {
+            return Err(String::from(
+                "seed reservation lifecycle receipt is inconsistent",
+            ));
+        }
+        Ok(SeedReservation {
+            path,
+            generation: existing.generation,
+            resumed: true,
+        })
+    }
+}
+
+fn reservation_path() -> Result<PathBuf, String> {
+    let raw_path = required("STS2_SEED_RESERVATION_PATH")?;
+    if raw_path.len() > 512 || raw_path.chars().any(char::is_control) {
+        return Err(String::from(
+            "STS2_SEED_RESERVATION_PATH is unsafe or oversized",
+        ));
+    }
+    Ok(PathBuf::from(raw_path))
 }
