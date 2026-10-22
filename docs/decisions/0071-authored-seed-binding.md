@@ -77,3 +77,18 @@ inside the production size budget, and is additive to the existing seeded-run ma
 - [ADR 0036](0036-seeded-run-transport-v1.md): the explicit seeded-run transport reused here.
 - [sts2-game-mod#79](https://github.com/AI-Ascension/sts2-game-mod/issues/79): the native setup proof
   that stays external.
+
+## Amendment: shared runtime input validation
+
+The runtime seeded-plan input now calls this module's canonical validator instead of maintaining a
+second length/control-only predicate and a second 64-byte limit. New runtime and authored explicit
+seeds therefore share the same UTF-8 byte, control-character and surrounding-whitespace rules.
+Neither route rewrites the supplied bytes.
+
+Legacy runtime reservations may contain padded seeds that this authored contract has never admitted.
+They retain exact-identity, original-generation reconciliation under the
+[ADR 0036 amendment](0036-seeded-run-transport-v1.md); they do not acquire new-start permission.
+The process-isolated seed admission tests exercise both the real runtime environment parser and the
+authored V2 request validator, including 64/65-byte ASCII and multibyte boundaries, Unicode
+whitespace, conflicting records and record disappearance after admission. These are synthetic
+configuration and filesystem checks, not native seed settlement or broader issue #103 acceptance.
