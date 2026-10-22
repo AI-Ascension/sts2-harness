@@ -12,42 +12,71 @@ impl Drop for ActiveConnection {
     }
 }
 
+pub(super) struct ServerContext {
+    pub(super) service: Arc<ManagementService>,
+    pub(super) authenticator: Arc<dyn Authenticator>,
+    pub(super) limits: HttpLimits,
+    pub(super) stop: Arc<AtomicBool>,
+    pub(super) failure_sink: ManagementFailureSink,
+    pub(super) lifecycle_log: RequestLifecycleLog,
+    pub(super) dispatch: Arc<dispatch_executor::DispatchExecutor>,
+}
+
 pub(super) fn run_server_loop(
     listener: TcpListener,
-    service: Arc<ManagementService>,
-    authenticator: Arc<dyn Authenticator>,
-    limits: HttpLimits,
-    stop: Arc<AtomicBool>,
-    failure_sink: ManagementFailureSink,
-    lifecycle_log: RequestLifecycleLog,
+    context: ServerContext,
+) -> Result<(), HttpError> {
+    let mut workers = Vec::new();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        accept_connections(&listener, &context, &mut workers)
+    }));
+    context.stop.store(true, Ordering::Release);
+    // Closing transport does not discard accepted work. This supervisor remains in the bounded
+    // process registry until both connection and dispatch worker handles have been joined.
+    drop(listener);
+    for handle in workers {
+        let _ = handle.join();
+    }
+    context.dispatch.drain();
+    result.unwrap_or_else(|_| {
+        Err(HttpError::new(
+            "server_accept_panicked",
+            "management admission terminated unexpectedly",
+        ))
+    })
+}
+
+fn accept_connections(
+    listener: &TcpListener,
+    context: &ServerContext,
+    workers: &mut Vec<JoinHandle<()>>,
 ) -> Result<(), HttpError> {
     let active = Arc::new(AtomicUsize::new(0));
-    let dispatch_executor = Arc::new(dispatch_executor::DispatchExecutor::new(
-        limits.max_connections,
-    ));
-    let workers: Arc<Mutex<Vec<JoinHandle<()>>>> = Arc::new(Mutex::new(Vec::new()));
     loop {
-        if stop.load(Ordering::Acquire) {
+        if context.stop.load(Ordering::Acquire) {
             break;
         }
         match listener.accept() {
             Ok((stream, peer)) => {
+                if context.stop.load(Ordering::Acquire) {
+                    break;
+                }
                 let current = active.load(Ordering::Acquire);
-                if current >= limits.max_connections {
+                if current >= context.limits.max_connections {
                     stream
-                        .set_write_timeout(Some(limits.deadline))
+                        .set_write_timeout(Some(context.limits.deadline))
                         .map_err(io_http_error)?;
                     let _ = write_raw_status(stream, 503, "Service Unavailable", &[]);
                     continue;
                 }
                 active.fetch_add(1, Ordering::AcqRel);
-                let service = Arc::clone(&service);
-                let authenticator = Arc::clone(&authenticator);
+                let service = Arc::clone(&context.service);
+                let authenticator = Arc::clone(&context.authenticator);
                 let active_for_worker = Arc::clone(&active);
-                let worker_limits = limits.clone();
-                let worker_failure_sink = failure_sink.clone();
-                let worker_log = lifecycle_log.clone();
-                let worker_dispatch = Arc::clone(&dispatch_executor);
+                let worker_limits = context.limits.clone();
+                let worker_failure_sink = context.failure_sink.clone();
+                let worker_log = context.lifecycle_log.clone();
+                let worker_dispatch = Arc::clone(&context.dispatch);
                 let worker = thread::Builder::new()
                     .name("sts2-management-connection".to_owned())
                     .spawn(move || {
@@ -68,17 +97,15 @@ pub(super) fn run_server_loop(
                         }
                     })
                     .map_err(io_http_error)?;
-                if let Ok(mut handles) = workers.lock() {
-                    let mut index = 0;
-                    while index < handles.len() {
-                        if handles[index].is_finished() {
-                            let _ = handles.swap_remove(index).join();
-                        } else {
-                            index += 1;
-                        }
+                let mut index = 0;
+                while index < workers.len() {
+                    if workers[index].is_finished() {
+                        let _ = workers.swap_remove(index).join();
+                    } else {
+                        index += 1;
                     }
-                    handles.push(worker);
                 }
+                workers.push(worker);
             }
             Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
                 thread::sleep(Duration::from_millis(10));
@@ -86,10 +113,5 @@ pub(super) fn run_server_loop(
             Err(error) => return Err(io_http_error(error)),
         }
     }
-    if let Ok(mut handles) = workers.lock() {
-        for handle in handles.drain(..) {
-            let _ = handle.join();
-        }
-    }
-    dispatch_executor.shutdown()
+    Ok(())
 }
