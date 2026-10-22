@@ -32,6 +32,14 @@ them. No request supplies an executable, command line, endpoint or filesystem pa
 | Dedicated supervisor helper | One backend generation and all descendants adopted by its Linux subreaper scope | Enforce absolute deadlines, terminate/reap its children, refuse replacement while exit is uncertain |
 | Persistent backend | Authentication, service, stores, context owner, runtime/provider ports and bounded handler threads | Dispatch the actual authenticated route and write diagnostics through the configured stderr |
 
+Before spawning, the frontend reads at most 65,537 bytes of `/proc/self/status` and requires
+a valid, unambiguous ignored-signal mask within the 65,536-byte limit. Inherited
+`SIGCHLD=SIG_IGN` is refused with `owned_management_child_wait`: Linux otherwise discards
+child exit statuses, leaving retained `Child` handles unable to prove cleanup. The helper
+rechecks before creating children. This does not change the host's signal dispositions.
+An embedding caller must preserve child-wait semantics throughout serving; concurrent
+signal-policy changes or external reaping of these children are outside the guarantee.
+
 The frontend starts the helper before admitting HTTP. The helper composes a backend and
 waits for its ready frame before the frontend binds the public loopback listener.
 The frontend and embedding host never become subreapers and never call an all-child
@@ -135,9 +143,11 @@ Normal lifecycle markers retain their route templates, budget, per-server identi
 elapsed time, status and redaction. They are queued without blocking the HTTP frontend.
 The backend acknowledges a marker only after the actual stderr write. A full queue,
 refused diagnostic or retired generation increments a saturating frontend loss counter.
-Every owned HTTP response includes `X-Ascension-Diagnostic-Loss`, the cumulative loss
-known when that response is serialized. A later loss may first appear on a later response;
-the header is not an acknowledgement of that response's terminal marker.
+Responses for admitted owned HTTP requests include `X-Ascension-Diagnostic-Loss`, the
+cumulative loss known when that response is serialized. The bounded nonblocking 503
+attempt for a connection refused before admission may omit the header. A later loss may
+first appear on a later response; the header is not an acknowledgement of that response's
+terminal marker.
 
 An empty or incomplete stderr stream alone is therefore no longer evidence that no
 request arrived or that all diagnostics succeeded. Check the loss counter and typed
@@ -156,6 +166,9 @@ blocked stderr, helper panic reporting, malformed framing and stale private iden
 The shipped `sts2-workflow serve` command also faces a real competing SQLite transaction:
 the blocked backend exits within its dispatch/cleanup bound, its uncommitted claim remains
 missing, and subsequent original-ID recovery precedes one explicitly requested admission.
+Both shipped commands also run under isolated Bash launchers that ignore `SIGCHLD`;
+they must refuse promptly before owner-store composition. Parser regressions cover
+missing, malformed, duplicate and oversized process-status input.
 The existing receipt-restart and authorization suites remain necessary alongside them.
 
 This proves the tested local Linux transport/ownership boundary. It does not establish
