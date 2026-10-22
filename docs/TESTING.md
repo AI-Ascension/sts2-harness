@@ -42,7 +42,10 @@ regressions verify that progress and interruptions never renew the total write b
 repeat an already-written prefix. `management_owned_cli` runs the shipped `sts2-workflow serve`
 command with a competing SQLite writer, proves the blocked backend exits before its busy wait,
 and recovers the original submission before any resubmission. It also verifies that losing
-the frontend closes the helper/backend ownership scope. See
+the frontend closes the helper/backend ownership scope. `management_owned_preflight`
+uses isolated Bash launchers with ignored `SIGCHLD` for both shipped serve commands and
+requires prompt refusal before owner-store composition, without changing the test runner's
+signal state. `owned_child_wait::tests` covers bounded, fail-closed procfs status parsing. See
 [ADR 0091](decisions/0091-owned-management-backend-termination.md) for the Linux scope,
 diagnostic-loss header and explicit pending-cleanup behavior. These are transport and
 ownership tests; native game/provider cleanup remains a separate acceptance boundary.
