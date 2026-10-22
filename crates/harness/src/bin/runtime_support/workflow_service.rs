@@ -29,6 +29,10 @@ pub(super) fn serve() -> Result<(), String> {
     if !listen.ip().is_loopback() {
         return Err(String::from("STS2_WORKFLOW_LISTEN must be loopback"));
     }
+    if !sts2_harness::management::owned_management_backend_requested() {
+        return sts2_harness::management::serve_owned_management(listen)
+            .map_err(|error| error.to_string());
+    }
     let store = required("STS2_WORKFLOW_STORE")?;
     let profile = required("STS2_WORKFLOW_AUTH_PROFILE")?;
     let authenticator =
