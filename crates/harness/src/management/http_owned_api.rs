@@ -26,6 +26,8 @@ pub fn owned_management_supervisor_requested() -> bool {
 /// The same executable must call this entrypoint before constructing services, and route its
 /// backend role to the normal service composition. This is not an arbitrary callback runner.
 /// The embedding process never enables subreaper or performs an all-child wait.
+/// Inherited ignored SIGCHLD is refused before spawning; the caller must preserve child-wait
+/// semantics and must not install an auto-reaper or consume this transport's child exit statuses.
 pub fn serve_owned_management(listen: SocketAddr) -> Result<(), HttpError> {
     #[cfg(target_os = "linux")]
     {
