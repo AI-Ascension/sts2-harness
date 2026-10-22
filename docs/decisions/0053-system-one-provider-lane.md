@@ -213,3 +213,46 @@ the provider kind declares, which admits the Exo lane for a live episode through
 envelope and refuses a `STS2_PROVIDER_KIND` no lane implements. This lane is unchanged by that
 record: `typesafe-jev` declares no live-episode capability, so a live episode is refused on it by
 capability, and it is still not admitted to the reviewed envelope.
+
+## Amendment 2026-10-22: one deadline includes platform resolution
+
+The transport keeps its existing 100-second budget per HTTPS exchange and 10-second connection
+cap. Previously the synchronous platform resolver ran outside any enforceable timeout, and the
+remaining-budget helper supplied a fresh one-millisecond allowance after expiry. Repeated reads or
+already-buffered TLS plaintext could therefore outlive the stated budget. These are source defects
+within [#299](https://github.com/AI-Ascension/sts2-harness/issues/299), separate from that issue's
+live-provider acceptance gate.
+
+The budget now starts after credential admission and before resolution. One monotonic start instant
+covers resolution, connection, certificate verification, request construction and transmission,
+response reads, and HTTP framing validation. Every socket operation is bounded by the remaining
+budget, including repeated reads or writes performed inside rustls. Logical reads and framing checks
+also reject expiry because decrypted bytes and a clean TLS close can be returned without socket I/O.
+An expired budget is a refusal, never a new socket allowance.
+
+The platform's [`ToSocketAddrs`](https://doc.rust-lang.org/std/net/trait.ToSocketAddrs.html) may block
+and has no cancellation argument. A single owned watchdog therefore guards the entire exchange and
+exits the **one-shot `sts2-jev-bridge` process** with status 2 if the budget expires while an operation
+does not return. This is private binary code: its only production caller is `run` in
+`sts2-jev-bridge.rs`, through `tls::post`; no library or embedded caller shares the process. The
+watchdog holds only the start instant and a bounded cancellation receiver, is cancelled and joined
+on normal return or unwinding, and never starts a resolver subprocess or detached resolver thread.
+It prints nothing before exiting, so a blocked output pipe cannot delay that path. Rust
+[`process::exit`](https://doc.rust-lang.org/std/process/fn.exit.html) does not run Rust destructors;
+the operating system closes this process's connection. No provider-side cancellation is implied.
+
+A deadline can occur after part or all of a request was sent. Nonzero exit and absent decision
+preserve refusal and **uncertainty about provider execution**, not proof that the request was never
+received or rolled back. The supervisor's existing `exchange_pipes` maps a nonzero child status to
+`ExoTransportError::Unavailable`; the durable decision recorder retains provider-unavailable outcomes
+as unknown. There is no transport retry, fallback action, new provider route, TLS-root override, or
+credential exposure. Modes that ask more than one question sequentially keep one budget per POST.
+
+`cargo test --locked --package sts2-harness --bin sts2-jev-bridge` covers an expired budget before
+resolution, a stalled resolver through the actual guarded POST path in an owned test subprocess,
+normal completion surviving beyond its cancelled watchdog, expired socket reads/writes/flushes, and
+both accepted and expired fully buffered TLS responses. The existing silent-peer handshake case now
+requires the client's deadline refusal; peer closure no longer satisfies it. These use synthetic
+credentials, bytes, and loopback peers. The host, endpoint, root store, and production CLI remain
+fixed; the resolver seam is private and the only production argument is the fixed-host resolver.
+The tests do not call a provider or establish live-provider, native-host, or gameplay compatibility.

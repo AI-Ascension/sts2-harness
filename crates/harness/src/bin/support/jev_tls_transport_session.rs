@@ -17,7 +17,8 @@ use std::net::TcpStream;
 use std::sync::Arc;
 use std::time::Instant;
 
-use super::{PROVIDER_HOST, deadline};
+use super::PROVIDER_HOST;
+use super::budget::DeadlineSocket;
 
 /// A client configuration trusting only the loopback fixture CA, for the offline handshake tests.
 ///
@@ -72,10 +73,12 @@ fn config_from_roots(
 /// certificate and hostname are verified before the request is built and sent. That ordering is
 /// the point: a refusal at this stage means nothing about the request was disclosed to the peer.
 pub(crate) fn tls_session(
-    mut stream: TcpStream,
+    stream: TcpStream,
     started: Instant,
-) -> Result<rustls::StreamOwned<rustls::ClientConnection, TcpStream>, Box<dyn std::error::Error>> {
-    let connection = connection_over(&mut stream, client_config()?, started)?;
+) -> Result<rustls::StreamOwned<rustls::ClientConnection, DeadlineSocket>, Box<dyn std::error::Error>>
+{
+    let mut stream = DeadlineSocket::new(stream, started);
+    let connection = connection_over(&mut stream, client_config()?)?;
     Ok(rustls::StreamOwned::new(connection, stream))
 }
 
@@ -86,15 +89,14 @@ pub(crate) fn tls_session(
 /// than a parallel copy of it. A copy would be a different piece of code from the one a run uses,
 /// so passing it would prove nothing about the production path.
 pub(crate) fn connection_over(
-    stream: &mut TcpStream,
+    stream: &mut DeadlineSocket,
     config: Arc<rustls::ClientConfig>,
-    started: Instant,
 ) -> Result<rustls::ClientConnection, Box<dyn std::error::Error>> {
     let name = rustls_pki_types::ServerName::try_from(PROVIDER_HOST.to_owned())
         .map_err(|_| "the admitted provider host is not a valid server name")?;
     let mut connection = rustls::ClientConnection::new(config, name)
         .map_err(|_| "the provider TLS session could not be created")?;
-    handshake(&mut connection, stream, started)?;
+    handshake(&mut connection, stream)?;
     Ok(connection)
 }
 
@@ -115,23 +117,17 @@ pub(crate) fn connection_over(
 /// response path reports.
 fn handshake(
     connection: &mut rustls::ClientConnection,
-    stream: &mut TcpStream,
-    started: Instant,
+    stream: &mut DeadlineSocket,
 ) -> Result<(), Box<dyn std::error::Error>> {
     while connection.is_handshaking() {
-        if started.elapsed() >= deadline() {
-            return Err("the provider exchange exceeded its deadline".into());
-        }
-        // Both directions are re-bounded from the same original deadline before every operation,
-        // so no phase of the exchange can be handed a fresh allowance.
-        super::bound_socket(stream, started)?;
+        stream.check()?;
         flush_records(connection, stream)?;
         // `read_tls` pulls from the socket itself and hands the bytes to the deframer, so the
         // transcript actually reaches the verifier. This loop never inspects a byte; it only
         // moves them from the socket into the session.
-        let read = connection
-            .read_tls(stream)
-            .map_err(|_| "the provider TLS handshake could not be completed")?;
+        let read = connection.read_tls(stream).map_err(|error| {
+            handshake_failure(&error, "the provider TLS handshake could not be completed")
+        })?;
         if read == 0 {
             return Err("the provider closed the connection during the TLS handshake".into());
         }
@@ -141,8 +137,9 @@ fn handshake(
     }
     // The final flight -- the client's Finished -- can be produced by the last
     // `process_new_packets` and still be unsent, so drain once more after the loop.
-    super::bound_socket(stream, started)?;
+    stream.check()?;
     flush_records(connection, stream)?;
+    stream.check()?;
     Ok(())
 }
 
@@ -154,7 +151,7 @@ fn handshake(
 /// something to retry.
 fn flush_records(
     connection: &mut rustls::ClientConnection,
-    stream: &mut TcpStream,
+    stream: &mut DeadlineSocket,
 ) -> Result<(), Box<dyn std::error::Error>> {
     while connection.wants_write() {
         let mut outgoing = Vec::new();
@@ -164,12 +161,20 @@ fn flush_records(
         if outgoing.is_empty() {
             return Err("the provider TLS session made no handshake progress".into());
         }
-        stream
-            .write_all(&outgoing)
-            .map_err(|_| "the provider TLS handshake could not be sent")?;
-        stream
-            .flush()
-            .map_err(|_| "the provider TLS handshake could not be sent")?;
+        stream.write_all(&outgoing).map_err(|error| {
+            handshake_failure(&error, "the provider TLS handshake could not be sent")
+        })?;
+        stream.flush().map_err(|error| {
+            handshake_failure(&error, "the provider TLS handshake could not be sent")
+        })?;
     }
     Ok(())
+}
+
+fn handshake_failure(error: &std::io::Error, refusal: &'static str) -> Box<dyn std::error::Error> {
+    if super::is_timeout(error) {
+        super::budget::EXPIRED.into()
+    } else {
+        refusal.into()
+    }
 }
