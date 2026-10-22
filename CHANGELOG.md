@@ -12,6 +12,12 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
 
 ## Unreleased
 
+- **Production launch-observation failures retain retryability and prevent relaunch.**
+  Retryable reads return v2 `write_state_unknown`; terminal reads return v1 `conflict` with owner `unresolved`.
+  Original-ID recovery retains the run; provider construction stays fenced and cleanup errors stay distinct.
+  Synthetic HTTP/SQLite tests cover recovery without native/provider or Studio 502 claims. Refs #804;
+  see [ADR 0090](docs/decisions/0090-production-launch-observation-recovery.md).
+
 - **Management dispatch waits are bounded independently of HTTP reads and writes.**
   A timed-out mutation returns owner-local `ascension.management-error/v2` with
   `write_state_unknown`; retained workers and actor-bound V1 submission claims prevent
