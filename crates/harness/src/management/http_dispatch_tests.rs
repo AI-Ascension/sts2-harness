@@ -12,6 +12,9 @@ use std::time::Instant;
 mod support;
 use support::*;
 
+#[path = "http_dispatch_read_only_tests.rs"]
+mod read_only;
+
 struct Fixture {
     server: ServerHandle,
     service: Arc<ManagementService>,
@@ -223,6 +226,22 @@ fn shutdown_reports_retained_work_without_claiming_cancellation() {
     assert!(started.elapsed() < Duration::from_secs(3));
     assert_eq!(
         fixture
+            .server
+            .pending_dispatches()
+            .expect("retained capacity"),
+        1
+    );
+    assert_eq!(
+        fixture
+            .server
+            .shutdown()
+            .expect_err("same supervisor remains pending")
+            .code,
+        "dispatch_shutdown_pending"
+    );
+    assert_eq!(fixture.server.pending_dispatches().expect("same worker"), 1);
+    assert_eq!(
+        fixture
             .service
             .submission_recovery(&fixture.actor, "shutdown-request")
             .expect("claim")
@@ -249,4 +268,68 @@ fn shutdown_reports_retained_work_without_claiming_cancellation() {
         thread::yield_now();
     }
     assert_eq!(fixture.stall.0.entered.load(Ordering::SeqCst), 1);
+    fixture
+        .server
+        .wait()
+        .expect("retained supervisor joins after release");
+}
+
+#[test]
+fn dropping_the_public_handle_preserves_supervision_until_every_worker_is_joined() {
+    let Fixture {
+        server,
+        service,
+        actor,
+        stall,
+        ..
+    } = fixture();
+    let client = ManagementClient::new(server.address(), "owner-token").expect("client");
+    let response = client
+        .request_json(
+            "POST",
+            "/v1/workflow-runs",
+            Some(&body("abandoned-request")),
+        )
+        .expect("deadline response");
+    assert_eq!(response.status, 503);
+    let weak = Arc::downgrade(&server.supervisor);
+    drop(server);
+    // The dispatch and server closures have no Supervisor Arc. Only the bounded process
+    // registry can keep this owner reachable after its public handle has gone away.
+    let owner = weak.upgrade().expect("registry retains supervisor");
+    assert!(
+        owner
+            .wait(Some(Instant::now() + Duration::from_millis(100)))
+            .expect("inspect owner")
+            .is_none()
+    );
+    assert_eq!(owner.dispatch.pending().expect("capacity remains held"), 1);
+    assert_eq!(
+        service
+            .submission_recovery(&actor, "abandoned-request")
+            .expect("claim")
+            .state,
+        SubmissionRecoveryState::Pending
+    );
+    stall.0.release();
+    owner
+        .wait(Some(Instant::now() + Duration::from_secs(3)))
+        .expect("owner result")
+        .expect("all workers joined")
+        .expect("server drain");
+    assert_eq!(owner.dispatch.pending().expect("joined workers"), 0);
+    assert_eq!(
+        service
+            .submission_recovery(&actor, "abandoned-request")
+            .expect("claim")
+            .state,
+        SubmissionRecoveryState::Submitted
+    );
+    assert_eq!(stall.0.entered.load(Ordering::SeqCst), 1);
+    drop(owner);
+    ManagementServer::reap_retired_servers().expect("reap completed supervisors");
+    assert!(
+        weak.upgrade().is_none(),
+        "finished supervisor is joined and released"
+    );
 }
