@@ -52,7 +52,6 @@ use std::time::Instant;
 
 use super::lifecycle_log::RequestLifecycleLog;
 use super::parse::read_request;
-use super::response::write_response;
 use super::*;
 use crate::management::auth::Authenticator;
 use crate::management::service::ManagementService;
@@ -63,12 +62,40 @@ use crate::management::service::ManagementService;
 /// `handle_connection` did, so this function is a drop-in for it: the caller sees the
 /// same value, and the lifecycle markers are emitted in addition.
 pub(super) fn serve_reported(
-    mut stream: TcpStream,
+    stream: TcpStream,
     service: Arc<ManagementService>,
     authenticator: Arc<dyn Authenticator>,
     limits: &HttpLimits,
     lifecycle_log: &RequestLifecycleLog,
     dispatch_executor: &super::dispatch_executor::DispatchExecutor,
+) -> Result<(), (Option<String>, HttpError)> {
+    serve_with_dispatch(stream, limits, lifecycle_log, None, |request| {
+        dispatch_executor.dispatch(request, service, authenticator, limits.dispatch_deadline)
+    })
+}
+
+#[cfg(target_os = "linux")]
+pub(super) fn serve_owned_reported(
+    stream: TcpStream,
+    limits: &HttpLimits,
+    lifecycle_log: &RequestLifecycleLog,
+    proxy: &super::owned_proxy::Proxy,
+) -> Result<(), (Option<String>, HttpError)> {
+    serve_with_dispatch(
+        stream,
+        limits,
+        lifecycle_log,
+        Some(Arc::clone(&proxy.lost_diagnostics)),
+        |request| Ok(proxy.dispatch(request, limits.dispatch_deadline)),
+    )
+}
+
+fn serve_with_dispatch(
+    mut stream: TcpStream,
+    limits: &HttpLimits,
+    lifecycle_log: &RequestLifecycleLog,
+    diagnostic_loss: Option<Arc<std::sync::atomic::AtomicU64>>,
+    dispatch: impl FnOnce(HttpRequest) -> std::thread::Result<Result<HttpResponse, HttpError>>,
 ) -> Result<(), (Option<String>, HttpError)> {
     // Opened before the first read so the record exists even if the peer never
     // finishes a request. It emits nothing on its own.
@@ -98,22 +125,14 @@ pub(super) fn serve_reported(
             // connection loudly instead of being silently converted into an ordinary
             // error response. Catching without resuming would hide the fault.
             lifecycle.log_dispatch_budget(limits.dispatch_deadline);
-            let response = match dispatch_executor.dispatch(
-                request,
-                service,
-                authenticator,
-                limits.dispatch_deadline,
-            ) {
+            let response = match dispatch(request) {
                 Ok(response) => response,
                 Err(payload) => {
                     lifecycle.log_panicked();
                     std::panic::resume_unwind(payload);
                 }
             };
-            if response
-                .as_ref()
-                .is_err_and(|error| error.code == "dispatch_deadline_exceeded")
-            {
+            if dispatch_timed_out(&response) {
                 lifecycle.log_dispatch_timeout();
             }
             (Some(route), response)
@@ -142,12 +161,17 @@ pub(super) fn serve_reported(
         Ok(response) => response.status,
         Err(error) => error.status(),
     };
-    let written = write_response(
-        &mut stream,
-        response,
-        Instant::now() + limits.deadline,
-        limits,
-    );
+    let write_deadline = Instant::now() + limits.deadline;
+    let written = match diagnostic_loss {
+        Some(count) => super::response::write_response_with_diagnostic_loss(
+            &mut stream,
+            response,
+            write_deadline,
+            limits,
+            Some(count.load(Ordering::Acquire)),
+        ),
+        None => super::response::write_response(&mut stream, response, write_deadline, limits),
+    };
     match (&written, &unreadable_code) {
         // A request that never parsed cannot have a start marker, and must not be
         // reported as an ordinary completion. Naming it is what keeps a peer that
@@ -161,4 +185,56 @@ pub(super) fn serve_reported(
         (Err(error), None) => lifecycle.log_abandoned(&error.code),
     }
     written.map_err(|error| (route, error))
+}
+
+fn dispatch_timed_out(response: &Result<HttpResponse, HttpError>) -> bool {
+    let encoded;
+    let code = match response {
+        Err(error) => Some(error.code.as_str()),
+        Ok(response) if response.status == 503 => {
+            encoded = serde_json::from_slice::<serde_json::Value>(&response.body).ok();
+            encoded
+                .as_ref()
+                .and_then(|body| body.get("error"))
+                .and_then(|error| error.get("code"))
+                .and_then(serde_json::Value::as_str)
+        }
+        Ok(_) => None,
+    };
+    matches!(
+        code,
+        Some(
+            "dispatch_deadline_exceeded"
+                | "dispatch_backend_terminated"
+                | "dispatch_termination_pending"
+        )
+    )
+}
+
+#[cfg(test)]
+mod owned_timeout_tests {
+    use super::*;
+
+    #[test]
+    fn encoded_v1_and_v2_retirement_replies_emit_timeout_markers() -> Result<(), HttpError> {
+        for code in [
+            "dispatch_backend_terminated",
+            "dispatch_termination_pending",
+        ] {
+            for error in [
+                ManagementError::unavailable(code, "read did not return"),
+                ManagementError::write_state_unknown(code, "recover the original identity"),
+            ] {
+                let response = response::error_response(
+                    HttpError::from_management(error),
+                    MAX_RESPONSE_BYTES,
+                )?;
+                assert!(dispatch_timed_out(&Ok(response)));
+            }
+        }
+        assert!(!dispatch_timed_out(&Err(HttpError::from_management(
+            ManagementError::unavailable("port_unavailable", "unrelated refusal"),
+        ))));
+        Ok(())
+    }
 }
