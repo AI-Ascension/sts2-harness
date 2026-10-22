@@ -17,7 +17,7 @@ pub(super) struct Stall {
 }
 
 impl Stall {
-    fn wait(&self) {
+    pub(super) fn wait(&self) {
         self.entered.fetch_add(1, Ordering::SeqCst);
         let guard = self.released.lock().expect("stall lock");
         let (guard, timeout) = self
