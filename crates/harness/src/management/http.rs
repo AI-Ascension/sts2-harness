@@ -22,6 +22,8 @@ mod lifecycle_log;
 mod parse;
 #[path = "http_response.rs"]
 mod response;
+#[path = "http_route_effects.rs"]
+mod route_effects;
 #[path = "http_routes.rs"]
 mod routes;
 #[path = "http_routes_context_owner.rs"]
@@ -38,8 +40,12 @@ mod routes_memory_owner;
 mod routes_policy;
 #[path = "http_routes_run.rs"]
 mod routes_run;
+#[path = "http_server_handle.rs"]
+mod server_handle;
 #[path = "http_server_loop.rs"]
 mod server_loop;
+#[path = "http_supervision.rs"]
+mod supervision;
 
 pub use failure_report::{ManagementFailurePort, ManagementFailureSink};
 use lifecycle::serve_reported;
@@ -51,6 +57,7 @@ use response::{
 use server_loop::run_server_loop;
 
 pub use client::{ClientResponse, ManagementClient};
+pub use server_handle::ServerHandle;
 
 #[cfg(test)]
 #[path = "http_connection_tests.rs"]
@@ -191,60 +198,15 @@ impl std::fmt::Display for HttpError {
 
 impl std::error::Error for HttpError {}
 
-pub struct ServerHandle {
-    address: SocketAddr,
-    stop: Arc<AtomicBool>,
-    join: Option<JoinHandle<Result<(), HttpError>>>,
-}
-
-impl ServerHandle {
-    pub fn address(&self) -> SocketAddr {
-        self.address
-    }
-
-    pub fn shutdown(mut self) -> Result<(), HttpError> {
-        self.stop.store(true, Ordering::Release);
-        wake_listener(self.address);
-        let join = self.join.take().ok_or_else(|| {
-            HttpError::new(
-                "server_join_missing",
-                "management server join handle is missing",
-            )
-        })?;
-        join.join().map_err(|_| {
-            HttpError::new(
-                "server_thread_panicked",
-                "management server thread terminated unexpectedly",
-            )
-        })?
-    }
-
-    pub fn wait(mut self) -> Result<(), HttpError> {
-        let join = self.join.take().ok_or_else(|| {
-            HttpError::new(
-                "server_join_missing",
-                "management server join handle is missing",
-            )
-        })?;
-        join.join().map_err(|_| {
-            HttpError::new(
-                "server_thread_panicked",
-                "management server thread terminated unexpectedly",
-            )
-        })?
-    }
-}
-
-impl Drop for ServerHandle {
-    fn drop(&mut self) {
-        self.stop.store(true, Ordering::Release);
-        wake_listener(self.address);
-    }
-}
-
 pub struct ManagementServer;
 
 impl ManagementServer {
+    /// Joins completed retained supervisors and reports how many stopped servers still own work.
+    /// The process retains at most 128 active or draining servers; a pending owner is never evicted.
+    pub fn reap_retired_servers() -> Result<usize, HttpError> {
+        supervision::reap_retired()
+    }
+
     pub fn start(
         config: ServerConfig,
         service: Arc<ManagementService>,
@@ -261,24 +223,25 @@ impl ManagementServer {
         let authenticator = Arc::clone(&config.authenticator);
         let failure_sink = config.failure_sink;
         let lifecycle_log = config.lifecycle_log.clone();
-        let join = thread::Builder::new()
-            .name("sts2-management-server".to_owned())
-            .spawn(move || {
-                run_server_loop(
-                    listener,
-                    service,
-                    authenticator,
-                    limits,
-                    thread_stop,
-                    failure_sink,
-                    lifecycle_log,
-                )
-            })
-            .map_err(io_http_error)?;
+        let dispatch = Arc::new(dispatch_executor::DispatchExecutor::new(
+            limits.max_connections,
+        ));
+        let context = server_loop::ServerContext {
+            service,
+            authenticator,
+            limits,
+            stop: thread_stop,
+            failure_sink,
+            lifecycle_log,
+            dispatch: Arc::clone(&dispatch),
+        };
+        let supervisor = supervision::start(Arc::clone(&stop), dispatch, move || {
+            run_server_loop(listener, context)
+        })?;
         Ok(ServerHandle {
             address,
             stop,
-            join: Some(join),
+            supervisor,
         })
     }
 }
