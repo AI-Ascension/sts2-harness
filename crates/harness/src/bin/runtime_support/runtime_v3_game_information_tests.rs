@@ -8,7 +8,7 @@ mod lookup_binding_tests {
     use std::path::Path;
     use std::collections::VecDeque;
 
-    fn config(address: String) -> super::super::RuntimeConfig {
+    pub(super) fn config(address: String) -> super::super::RuntimeConfig {
         super::super::RuntimeConfig {
             seed_transport: None,
             gateway_address: address,
@@ -311,3 +311,7 @@ mod lookup_binding_tests {
         Ok(())
     }
 }
+
+#[cfg(all(test, unix))]
+#[path = "runtime_v3_game_information_manifest_tests.rs"]
+mod manifest_runtime_tests;
