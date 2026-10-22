@@ -13,8 +13,9 @@
 //!
 //! The refusals are the contract. A non-`200` status -- including the provider's `429` and `529` --
 //! a certificate or hostname that does not verify against the pinned roots, a body above the
-//! bound, a truncated or malformed frame, and a missed deadline are all the same outcome: an
-//! `Err`, no decision, and no fallback. A TLS failure is never a downgrade to plaintext and never
+//! bound, a truncated or malformed frame, and a missed deadline all refuse without a decision or
+//! fallback. A deadline can also terminate this one-shot bridge if a platform call does not return.
+//! A TLS failure is never a downgrade to plaintext and never
 //! a retry, because a retry policy belongs to the caller and a downgrade would make a run's
 //! evidence unable to say what terminated the connection.
 //!
@@ -30,6 +31,10 @@ pub(super) mod framing;
 #[path = "jev_tls_transport_session.rs"]
 pub(super) mod session;
 
+#[path = "jev_tls_transport_deadline.rs"]
+pub(super) mod budget;
+
+use budget::{DeadlineSocket, remaining};
 use session::tls_session;
 
 // The refusal tests reach the framer and the verifier the way the transport does. Re-exported
@@ -38,7 +43,7 @@ use session::tls_session;
 pub(super) use {framing::parse_body, session::client_config};
 
 use std::io::{Read, Write};
-use std::net::{TcpStream, ToSocketAddrs};
+use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
 use std::time::{Duration, Instant};
 
 /// Provider host this lane is admitted against.
@@ -67,7 +72,7 @@ pub(super) const MAX_HEADER_BYTES: usize = 8192;
 /// misconfiguration from becoming a request the peer has to reject.
 pub(super) const MAX_CREDENTIAL_BYTES: usize = 4096;
 
-/// How long the whole exchange may take, covering connect, handshake, write, and read.
+/// How long the whole exchange may take, including resolution, TLS, I/O and parsing.
 ///
 /// Read by [`deadline`] rather than named here so the session module can reach it without this
 /// module's private constant being duplicated across a `use`.
@@ -88,31 +93,38 @@ const CREDENTIAL_VARIABLE: &str = "TYPESAFE_API_KEY";
 ///
 /// # Errors
 ///
-/// Returns an opaque `&'static str` for every refusal. The message names the class of failure and
+/// Returns an opaque error for each completed refusal. The message names the class of failure and
 /// never carries the credential, the request body, or the response body, so an error surfaced in
 /// a log, a `cause:` line, or a capture cannot leak any of them.
+/// The deadline watchdog may instead exit this private one-shot bridge with status 2; it emits
+/// neither a decision nor a diagnostic that could block on a full output pipe.
 pub(super) fn post(body: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     // Read and validate the credential first. This is deliberately before resolution, connect,
     // and handshake: a run with no credential must refuse without opening a socket at all, and
     // must never build a header line out of a credential that was not there.
     let credential = credential()?;
-    let started = Instant::now();
-    let mut session = tls_session(connect(started)?, started)?;
+    post_after_admission(body, &credential, Instant::now(), resolve_provider)
+}
 
-    let request = build_request(body, &credential);
-    // The write timeout was last set at connect time, against the deadline as it stood then. It is
-    // refreshed against the same original deadline so a slow handshake cannot hand the writer a
-    // stale allowance that outlives the bound the run promised.
-    bound_socket(session.get_mut(), started)?;
-    session
-        .write_all(&request)
-        .map_err(|_| "the provider connection failed while sending the request")?;
-    session
-        .flush()
-        .map_err(|_| "the provider connection failed while sending the request")?;
-
-    let raw = read_response(&mut session, started)?;
-    framing::parse_body(&raw)
+fn post_after_admission(
+    body: &[u8],
+    credential: &str,
+    started: Instant,
+    resolve: impl FnOnce() -> Result<SocketAddr, Box<dyn std::error::Error>>,
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    budget::within(started, || {
+        let mut session = tls_session(connect(started, resolve)?, started)?;
+        let request = build_request(body, credential);
+        remaining(started)?;
+        session.write_all(&request).map_err(send_failure)?;
+        remaining(started)?;
+        session.flush().map_err(send_failure)?;
+        let raw = read_response(&mut session, started)?;
+        remaining(started)?;
+        let body = framing::parse_body(&raw)?;
+        remaining(started)?;
+        Ok(body)
+    })
 }
 
 /// Reads and validates the bearer credential from the environment.
@@ -147,74 +159,48 @@ fn credential() -> Result<String, Box<dyn std::error::Error>> {
     Ok(credential)
 }
 
-/// Connects to the admitted host, refusing a missing route rather than following a redirect.
-///
-/// # Errors
-///
-/// Refuses a host that does not resolve, a connection that cannot be opened inside both the
-/// per-attempt cap and the whole-exchange deadline, and a socket whose options cannot be set.
-fn connect(started: Instant) -> Result<TcpStream, Box<dyn std::error::Error>> {
-    let address = (PROVIDER_HOST, 443)
+/// Resolves only the admitted host; the owned process watchdog bounds this blocking platform call.
+fn resolve_provider() -> Result<SocketAddr, Box<dyn std::error::Error>> {
+    (PROVIDER_HOST, 443)
         .to_socket_addrs()
         .map_err(|_| "the provider host did not resolve")?
         .next()
-        .ok_or("the provider host did not resolve")?;
+        .ok_or_else(|| "the provider host did not resolve".into())
+}
+
+/// Connects inside both the per-attempt cap and the remaining whole-exchange budget.
+fn connect(
+    started: Instant,
+    resolve: impl FnOnce() -> Result<SocketAddr, Box<dyn std::error::Error>>,
+) -> Result<TcpStream, Box<dyn std::error::Error>> {
+    remaining(started)?;
+    let address = resolve()?;
     // The per-attempt cap and the whole-exchange deadline are both honoured, whichever is
     // shorter, so no phase of the exchange can outlast the bound the run promised.
-    let allowance = CONNECT_TIMEOUT.min(remaining(started));
-    if allowance.is_zero() {
-        return Err("the provider exchange exceeded its deadline".into());
-    }
+    let allowance = CONNECT_TIMEOUT.min(remaining(started)?);
     let stream = TcpStream::connect_timeout(&address, allowance)
         .map_err(|_| "the provider connection could not be opened")?;
     stream
         .set_nodelay(true)
         .map_err(|_| "the provider connection could not be configured")?;
-    // The handshake is driven on this socket directly, so the read and write timeouts have to be
-    // present before the first byte moves, not only before the first read of the response.
-    bound_socket(&stream, started)?;
+    remaining(started)?;
     Ok(stream)
 }
 
-/// Bounds both directions of the socket for the rest of the exchange.
-///
-/// A timeout is set in both directions deliberately. Read-only bounds still let a peer that stops
-/// reading leave the bridge blocked in `write` indefinitely, because a full socket buffer blocks
-/// the writer rather than returning a timeout, and that is the shape a stalled provider takes.
-///
-/// `started` is the whole-exchange start, not the present moment. Re-deriving the allowance from
-/// `Instant::now()` on every call would hand each phase a fresh 100 seconds, which is the same
-/// unbounded wait the bound exists to prevent -- a peer dribbling bytes inside every individual
-/// interval could keep a run open forever. Every refresh therefore computes what is left of the
-/// one deadline.
-pub(super) fn bound_socket(
-    stream: &TcpStream,
-    started: Instant,
-) -> Result<(), Box<dyn std::error::Error>> {
-    stream
-        .set_read_timeout(Some(remaining(started)))
-        .map_err(|_| "the provider connection timeout could not be set")?;
-    stream
-        .set_write_timeout(Some(remaining(started)))
-        .map_err(|_| "the provider connection timeout could not be set")?;
-    Ok(())
-}
-
-/// How much of the whole-exchange deadline is left, never below one millisecond.
-///
-/// A zero duration passed to `set_read_timeout` means "block forever" on some platforms and
-/// "fail immediately" on others, so the remainder is floored rather than allowed to reach zero.
-fn remaining(started: Instant) -> Duration {
-    deadline()
-        .saturating_sub(started.elapsed())
-        .max(Duration::from_millis(1))
+fn send_failure(error: std::io::Error) -> Box<dyn std::error::Error> {
+    if is_timeout(&error) {
+        budget::EXPIRED.into()
+    } else {
+        "the provider connection failed while sending the request".into()
+    }
 }
 
 /// Builds the one request this transport is allowed to send.
 ///
 /// The credential is placed in the header here and nowhere else. The request is fully buffered
-/// before the first byte is written, so a write failure cannot leave a partial header line, and
-/// the length is declared rather than left to a connection close. The credential is validated
+/// before the first byte is written, and the length is declared rather than left to a connection
+/// close. A failed write can still leave a partial or complete request at the peer; it is never
+/// retried or described as rolled back. The credential is validated
 /// before it reaches this function, so nothing that could terminate the header line is here.
 pub(super) fn build_request(body: &[u8], credential: &str) -> Vec<u8> {
     let mut request = format!(
@@ -235,7 +221,7 @@ pub(super) fn build_request(body: &[u8], credential: &str) -> Vec<u8> {
 
 /// Reads one response, bounded in size, in time, and in bytes.
 fn read_response(
-    session: &mut rustls::StreamOwned<rustls::ClientConnection, TcpStream>,
+    session: &mut rustls::StreamOwned<rustls::ClientConnection, DeadlineSocket>,
     started: Instant,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     // The bound is the body bound plus a full header block, so a response that is at the body
@@ -246,16 +232,13 @@ fn read_response(
     let mut raw = Vec::new();
     let mut chunk = [0_u8; 8192];
     loop {
-        // The timeout is refreshed on every read so the bound is the whole exchange rather than
-        // a fresh allowance per read: without this a peer dribbling one byte at a time inside
-        // each interval could keep a run open indefinitely.
-        session
-            .get_mut()
-            .set_read_timeout(Some(remaining(started)))
-            .map_err(|_| "the provider connection timeout could not be set")?;
+        // rustls may already hold decrypted bytes or EOF without touching the socket. Check
+        // those outcomes as well as the low-level I/O guarded by DeadlineSocket.
+        remaining(started)?;
         let read = session
             .read(&mut chunk)
             .map_err(|error| read_failure(&error))?;
+        remaining(started)?;
         match read {
             0 => break,
             read => {
@@ -288,7 +271,7 @@ fn read_failure(error: &std::io::Error) -> Box<dyn std::error::Error> {
     if error.kind() == std::io::ErrorKind::UnexpectedEof {
         "the provider closed the connection without a TLS close notification".into()
     } else if is_timeout(error) {
-        "the provider exchange exceeded its deadline".into()
+        budget::EXPIRED.into()
     } else {
         "the provider response could not be read".into()
     }
@@ -301,3 +284,7 @@ fn is_timeout(error: &std::io::Error) -> bool {
         std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
     )
 }
+
+#[cfg(test)]
+#[path = "jev_tls_transport_response_deadline_tests.rs"]
+mod response_deadline_tests;
