@@ -20,6 +20,11 @@ including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-0
   source-only and locked checks and corrected-path runtime qualification were NOT_RUN. No later
   gate result is implied; no native, provider, or game-compatibility claim. Refs #847.
 
+- **Debug/test admission hashing uses an explicit optimized `sha2` package profile.** Every load
+  still performs the bounded Node digest and source revision/clean-status checks; debug assertions
+  and overflow checks remain enabled. The standalone cost probe is not compiled-runtime evidence,
+  and no timeout or acceptance window changed. Refs #391, #847.
+
 
 - **Workflow seed support gains a v2 discovery catalog.** Authenticated clients can inspect structural durable support and readiness hints, while the additional structural mode gate runs after owner revalidation for new Missing submissions. The v1 catalog and v2 request shapes remain unchanged; source/component evidence does not establish native setup or seed settlement, deployment, or release. Refs #103.
 

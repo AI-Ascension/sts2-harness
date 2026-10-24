@@ -48,3 +48,15 @@ panic = "deny"
 todo = "deny"
 unimplemented = "deny"
 unwrap_used = "deny"
+
+# Keep exact admission hashing responsive in debug builds without disabling its guards.
+[profile.dev.package.sha2]
+opt-level = 3
+debug-assertions = true
+overflow-checks = true
+
+# `test` is a separate selected profile; state the package override explicitly.
+[profile.test.package.sha2]
+opt-level = 3
+debug-assertions = true
+overflow-checks = true
