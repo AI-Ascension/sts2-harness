@@ -4,6 +4,7 @@ mod action_envelope;
 mod exact_checkpoint;
 mod exact_retention;
 mod schema;
+mod schema_recipe_invocation;
 mod schema_worker;
 mod schema_workflow;
 mod store_checkpoint;
@@ -14,6 +15,7 @@ mod store_jobs;
 mod store_operation_queries;
 mod store_ops;
 mod store_provider;
+mod store_recipe_invocation;
 mod store_provider_queries;
 mod store_provider_results;
 mod store_recovery;
@@ -42,8 +44,10 @@ pub use types::{
     ExecutionStoreError, JobClaim, JobClaimOutcome, JobState, MAX_CATALOG_BYTES,
     MAX_OPERATION_ACTION_BYTES, MAX_ORIGINAL_CONTEXT_BYTES, OperationIntent, OperationState,
     ProviderFailureClass, ProviderReservation, ProviderReservationState, RECOVERY_CONTRACT_VERSION,
-    RECOVERY_SCHEMA_DIGEST, RecoveryDisposition, ResumeState, StorePragmas, StoredAttempt,
-    StoredDecision, StoredEpisode, StoredJob, StoredOperation, StoredWorkerHandoff,
+    RECOVERY_SCHEMA_DIGEST, RecipeInvocationBinding, RecipeInvocationContext,
+    RecipeInvocationReceipt, RecipeInvocationStatus, RecoveryDisposition,
+    ResumeState, StorePragmas, StoredAttempt, StoredDecision, StoredEpisode, StoredJob,
+    StoredOperation, StoredWorkerHandoff,
     WORKER_EMPTY_PARAMETERS_DIGEST, WORKER_HANDOFF_CONTRACT, WORKER_HANDOFF_SCHEMA_DIGEST,
     WORKER_MAX_ATTEMPT_NUMBER, WorkerAdmissionContext, WorkerAdmissionOutcome, WorkerBoot,
     WorkerCompletionStatus, WorkerControlMode, WorkerControlRequest, WorkerControlState,

@@ -10,6 +10,8 @@ mod enums;
 mod error;
 #[path = "types_records.rs"]
 mod records;
+#[path = "types_recipe_invocation.rs"]
+pub(crate) mod recipe_invocation;
 #[path = "types_worker.rs"]
 mod worker;
 
@@ -29,6 +31,10 @@ pub use records::{
     CompletionRecord, DecisionReference, JobClaim, JobClaimOutcome, MAX_OPERATION_ACTION_BYTES,
     MAX_ORIGINAL_CONTEXT_BYTES, OperationIntent, ProviderReservation, ResumeState, StoredAttempt,
     StoredDecision, StoredEpisode, StoredJob, StoredOperation,
+};
+pub use recipe_invocation::{
+    RecipeInvocationBinding, RecipeInvocationContext, RecipeInvocationReceipt,
+    RecipeInvocationStatus,
 };
 pub use worker::{
     StoredWorkerHandoff, WORKER_EMPTY_PARAMETERS_DIGEST, WORKER_HANDOFF_CONTRACT,
