@@ -16,7 +16,7 @@ use sts2_harness::{ExecutionCancellation, ExoTransport, sha256_hex};
 
 use super::super::config::RuntimeConfig;
 use super::super::runtime_v3_lifecycle_config::{RuntimeLifecycleConfig, RuntimeLifecycleSecrets};
-use super::super::runtime_v3_settings::RuntimeV3Settings;
+use super::super::runtime_v3_settings::{RuntimeV3Settings, trace_offline_entry_phase};
 use super::durable::DurableHandle;
 use super::lifecycle_authority::{RuntimeAuthority, RuntimeLifecycleAuthorityState};
 
@@ -100,6 +100,7 @@ fn build(
     lifecycle: &RuntimeLifecycleConfig,
     secrets: &RuntimeLifecycleSecrets,
 ) -> Result<(RuntimeLifecycleTransport, ProviderSessionPolicyOwner), String> {
+    trace_offline_entry_phase("lifecycle_build_start");
     authority_state
         .enable()
         .map_err(|_| String::from("cannot enable runtime lifecycle authority"))?;
@@ -123,15 +124,20 @@ fn build(
             "lifecycle transport requires the --run-v2 bridge",
         ));
     }
+    trace_offline_entry_phase("lifecycle_config_load_start");
     let inspected = sts2_harness::exo_bridge_configuration::load(configuration_path)
         .map_err(|_| String::from("cannot inspect lifecycle bridge configuration"))?;
+    trace_offline_entry_phase("lifecycle_config_load_end");
+    trace_offline_entry_phase("lifecycle_identity_start");
     let inspected_identity = inspected
         .inspected_identity(
             std::path::Path::new(settings.process.executable()),
             &config.instance_id,
         )
         .map_err(|_| String::from("cannot bind inspected lifecycle deployment identity"))?;
+    trace_offline_entry_phase("lifecycle_identity_end");
     let capabilities = lifecycle.capabilities(&inspected_identity)?;
+    trace_offline_entry_phase("lifecycle_encrypted_policy_start");
     let policy_store = ProviderSessionMetadataStore::encrypted(
         &lifecycle.policy_store_path,
         secrets.policy_key,
@@ -145,6 +151,7 @@ fn build(
         .active()
         .map_err(|_| String::from("lifecycle policy has no adopted active revision"))?;
     lifecycle.validate_policy(&policy, &capabilities)?;
+    trace_offline_entry_phase("lifecycle_encrypted_policy_end");
     let binding_ttl_seconds = policy.history_ttl_seconds;
     let owner_binding_digest = sha256_hex(secrets.owner_token.as_bytes());
     let authority = Arc::new(RuntimeAuthority {
@@ -162,6 +169,7 @@ fn build(
         scope: scope.clone(),
         owner_binding_digest,
     };
+    trace_offline_entry_phase("lifecycle_journal_owner_start");
     let owner = if lifecycle.directory.exists() {
         LifecycleOwner::open(
             journal,
@@ -188,6 +196,7 @@ fn build(
         )
     }
     .map_err(|_| String::from("cannot claim lifecycle journal owner"))?;
+    trace_offline_entry_phase("lifecycle_journal_owner_end");
     let lineage = durable.lifecycle_lineage();
     let config_digest = durable.lifecycle_config_digest();
     let model_revision = settings.exo.revision.clone();
@@ -249,6 +258,7 @@ fn build(
         manifests,
     )
     .map_err(|_| String::from("lifecycle provider-session TTL is invalid"))?;
+    trace_offline_entry_phase("lifecycle_build_end");
     Ok((transport, policies))
 }
 

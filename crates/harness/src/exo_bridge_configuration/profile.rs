@@ -2,7 +2,24 @@
 
 use super::*;
 
+static PROFILE_TRACE_EPOCH: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+
 pub(super) fn load_profile(path: &str, lookup: bool) -> Result<Loaded, &'static str> {
+    let timing = std::env::var("STS2_OFFLINE_ENTRY_PHASE_TIMING").is_ok_and(|value| value == "1");
+    let trace = |phase: &'static str| {
+        if timing {
+            eprintln!(
+                "offline_entry_phase_timing pid={} phase={} elapsed_ms={}",
+                std::process::id(),
+                phase,
+                PROFILE_TRACE_EPOCH
+                    .get_or_init(std::time::Instant::now)
+                    .elapsed()
+                    .as_millis()
+            );
+        }
+    };
+    trace("profile_load_start");
     let bytes = read_bounded(Path::new(path), MAX_CONFIGURATION_BYTES)?;
     let (config, private_state) = decode_profile(&bytes, lookup)?;
     #[cfg(not(target_os = "linux"))]
@@ -27,8 +44,11 @@ pub(super) fn load_profile(path: &str, lookup: bool) -> Result<Loaded, &'static 
         &config.extension_sha256,
         MAX_EXTENSION_BYTES,
     )?;
+    trace("node_verify_start");
     verify_file(&config.node, &config.node_sha256, MAX_NODE_BYTES)?;
+    trace("node_verify_end");
     verify_source(&config.source_root)?;
+    trace("exo_source_verify_end");
     // This build owns exactly this extension, not an arbitrary operator-authored TypeScript agent.
     if config.extension_sha256
         != sha256_hex(if lookup {

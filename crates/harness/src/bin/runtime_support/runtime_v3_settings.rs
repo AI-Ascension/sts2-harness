@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: MIT
 
+use std::sync::OnceLock;
+use std::time::Instant;
+
 use sts2_harness::exo_admission::ExoRuntimeAdmission;
 use sts2_harness::{
     EXO_MAX_MAP_REQUEST_BYTES, EXO_MAX_STANDARD_REQUEST_BYTES, EXO_SOURCE_REVISION,
@@ -15,6 +18,24 @@ const DEFAULT_MAX_REQUEST_BYTES: usize = EXO_MAX_STANDARD_REQUEST_BYTES;
 const DEFAULT_MAP_MAX_REQUEST_BYTES: usize = EXO_MAX_MAP_REQUEST_BYTES;
 const DEFAULT_MAX_RESPONSE_BYTES: usize = 8 * 1024;
 const DEFAULT_TIMEOUT_MILLIS: u32 = 120_000;
+const PHASE_TIMING_ENV: &str = "STS2_OFFLINE_ENTRY_PHASE_TIMING";
+static PHASE_TRACE_EPOCH: OnceLock<Instant> = OnceLock::new();
+
+pub(super) fn trace_offline_entry_phase(phase: &'static str) {
+    if !matches!(std::env::var(PHASE_TIMING_ENV).as_deref(), Ok("1")) {
+        return;
+    }
+    let elapsed_ms = PHASE_TRACE_EPOCH
+        .get_or_init(Instant::now)
+        .elapsed()
+        .as_millis();
+    eprintln!(
+        "offline_entry_phase_timing pid={} phase={} elapsed_ms={}",
+        std::process::id(),
+        phase,
+        elapsed_ms
+    );
+}
 
 pub(super) use lookup::LookupAgentSettings;
 
@@ -62,12 +83,15 @@ impl RuntimeV3Settings {
         // Admission inspects the exact bridge executable it is about to launch, so the process
         // configuration is assembled first. Lifecycle capability promotion is deferred until
         // its durable receipt adapter has been built.
-        let admission = runtime_v3_admission::from_environment(
+        trace_offline_entry_phase("settings_admission_begin");
+        let admission_result = runtime_v3_admission::from_environment(
             &process,
             config.map_context_enabled,
             &config.instance_id,
             lifecycle.is_some(),
-        )?;
+        );
+        trace_offline_entry_phase("settings_admission_end");
+        let admission = admission_result?;
         // Installed last: a run refused above cannot have already admitted live behavior.
         live_admission::install(live_mode)?;
         Ok(Self {
