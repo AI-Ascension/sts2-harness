@@ -4,7 +4,11 @@
 mod runtime_support;
 
 fn main() {
-    if std::env::args().nth(1).as_deref() == Some("serve-workflow") {
+    let arguments: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
+    if arguments.first().and_then(|argument| argument.to_str()) == Some("validate-r3-fixture") {
+        std::process::exit(runtime_support::workflow_fixture_preflight::run(&arguments));
+    }
+    if arguments.first().and_then(|argument| argument.to_str()) == Some("serve-workflow") {
         match runtime_support::serve_workflow() {
             Ok(()) => return,
             Err(error) => {

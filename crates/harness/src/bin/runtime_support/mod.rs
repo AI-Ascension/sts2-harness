@@ -22,6 +22,7 @@ mod runtime_v3_telemetry;
 mod runtime_v3_wire;
 mod seed_transport;
 mod v1_projection;
+pub(crate) mod workflow_fixture_preflight;
 mod workflow_service;
 
 pub(crate) use config::RuntimeConfig;

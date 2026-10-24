@@ -2,14 +2,15 @@
 
 All notable user-visible or operational changes to this project are documented here.
 
-The project follows Semantic Versioning once versioned releases begin. Foundation work does not
-claim a released harness version or runtime compatibility.
+The project follows Semantic Versioning once versioned releases begin. Foundation work does not claim a released harness version or runtime compatibility.
 
 Completed entries that no longer fit the active file's preferred size budget are preserved verbatim
 in [`docs/CHANGELOG-ARCHIVE.md`](docs/CHANGELOG-ARCHIVE.md) and the dated archives beside it,
 including [`docs/CHANGELOG-ARCHIVE-2026-09-28.md`](docs/CHANGELOG-ARCHIVE-2026-09-28.md).
 
 ## Unreleased
+
+- **R3 workflow fixtures gain a non-listening preflight command.** The runtime binary checks the owning strict workflow schema and graph before runtime startup, with bounded stdin and sanitized output. The raw-input digest records caller consistency; served owner integration and recovery remain separate gates. Refs #391.
 
 - **Workflow seed support gains a v2 discovery catalog.** Authenticated clients can inspect structural durable support and readiness hints, while the additional structural mode gate runs after owner revalidation for new Missing submissions. The v1 catalog and v2 request shapes remain unchanged; source/component evidence does not establish native setup or seed settlement, deployment, or release. Refs #103.
 
