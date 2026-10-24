@@ -30,20 +30,11 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Read reviewed Exo source revision
-        id: exo-revision
-        run: |
-          revision="$(sed -n 's/^pub const EXO_SOURCE_REVISION: &str = "\([0-9a-f]\{40\}\)";$/\1/p' crates/harness/src/exo/contract/mod.rs)"
-          test "${#revision}" -eq 40
-          printf 'revision=%s\n' "$revision" >> "$GITHUB_OUTPUT"
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.97.1 --profile minimal --component clippy --component rustfmt --no-self-update
 
-      - name: Check out reviewed Exo source for lifecycle fixtures
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: exoharness/exo
-          ref: ${{ steps.exo-revision.outputs.revision }}
-          path: target/exo-test-source
-          persist-credentials: false
+      - name: Provision exact synthetic Exo test fixtures
+        uses: ./.github/actions/exo-test-fixtures
 
       - name: Verify whitespace and fair-play source
         run: |
@@ -51,9 +42,6 @@ jobs:
           grep -Fxq 'include!("sandbox_validator.rs");' crates/harness/src/exo/sandbox.rs
           grep -Fq 'fn is_privileged_key(' crates/harness/src/exo/sandbox_validator.rs
           if grep -REn 'std::process|Command::|TcpStream' crates/harness/src/exo; then exit 1; fi
-
-      - name: Install pinned Rust toolchain
-        run: rustup toolchain install 1.97.1 --profile minimal --component clippy --component rustfmt --no-self-update
 
       - name: Verify copied POC artifact checksums
         run: (cd protocol-artifact/poc-v1 && sha256sum -c SHA256SUMS)

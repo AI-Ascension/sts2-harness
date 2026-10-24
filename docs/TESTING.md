@@ -75,6 +75,44 @@ cargo test --locked --package sts2-harness --bin sts2-harness-runtime
 cargo test --locked --package sts2-harness --test exo_lifecycle_runtime_entry
 ```
 
+The unignored `served_synthetic_profile_http` integration test and full workspace test suite also
+require a local Linux x64 fixture set. Use Rust 1.97.1, Node 22.14.0 with SHA-256
+`1abce2374a485bddae3c27b17a3e3143e2780232026e627c4fe74ddde3f380a1`, and the exact Exo revision
+read from `EXO_SOURCE_REVISION` in `crates/harness/src/exo/contract/mod.rs`. The CI composite
+action `.github/actions/exo-test-fixtures/action.yml` is the same-job reference recipe; artifacts
+or environment from another job and warm target directories are not shared inputs.
+
+For a local run, prepare those inputs as the composite action does:
+
+```bash
+rustup toolchain install 1.97.1 --profile minimal --component clippy --component rustfmt --no-self-update
+revision="$(sed -n 's/^pub const EXO_SOURCE_REVISION: &str = "\([0-9a-f]\{40\}\)";$/\1/p' crates/harness/src/exo/contract/mod.rs)"
+git clone https://github.com/exoharness/exo.git target/exo-test-source
+git -C target/exo-test-source checkout --detach "$revision"
+test "$(git -C target/exo-test-source rev-parse HEAD)" = "$revision"
+export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+test "$(corepack pnpm@10.26.2 --version)" = "10.26.2"
+corepack pnpm@10.26.2 --dir target/exo-test-source install --frozen-lockfile
+mkdir -p target/exo-test-source/experiments/exo-agent/extension/src
+cp experiments/exo-agent/extension/src/*.ts target/exo-test-source/experiments/exo-agent/extension/src/
+cp experiments/exo-agent/extension/package.json target/exo-test-source/experiments/exo-agent/extension/
+corepack pnpm@10.26.2 --dir target/exo-test-source/experiments/exo-agent/extension run check
+export STS2_EXO_TEST_NODE="/absolute/path/to/qualified/node"
+test -x "$STS2_EXO_TEST_NODE"
+test "$("$STS2_EXO_TEST_NODE" --version)" = "v22.14.0"
+test "$(sha256sum "$STS2_EXO_TEST_NODE" | cut -d' ' -f1)" = "1abce2374a485bddae3c27b17a3e3143e2780232026e627c4fe74ddde3f380a1"
+CARGO_TARGET_DIR="$PWD/target/exo-executor" cargo +1.97.1 build --locked --manifest-path experiments/exo-agent/bridge/Cargo.toml
+export STS2_EXO_TEST_SOURCE="$PWD/target/exo-test-source"
+export STS2_EXO_TEST_EXECUTOR_BINARY="$PWD/target/exo-executor/debug/sts2-exo-executor"
+test -x "$STS2_EXO_TEST_EXECUTOR_BINARY"
+cargo +1.97.1 test --workspace --all-targets --all-features --locked --no-fail-fast
+```
+
+The served test uses a local synthetic Responses peer and controlled synthetic MCP/Gateway peers.
+It does not use a paid provider or native game and does not prove owner provenance, Console recovery,
+or Harness/Console R3 acceptance. The full workspace command remains unfiltered; do not skip this
+test when its fixture prerequisites are absent.
+
 ```bash
 cargo run --locked --package repo-policy -- --strict
 cargo fmt --all --check

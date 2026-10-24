@@ -1,0 +1,62 @@
+name: Synthetic Exo served-test fixtures
+description: Provision the pinned synthetic Exo inputs used by Harness tests
+runs:
+  using: composite
+  steps:
+    - name: Read reviewed Exo source revision
+      id: exo-revision
+      shell: bash
+      run: |
+        set -euo pipefail
+        revision="$(sed -n 's/^pub const EXO_SOURCE_REVISION: &str = "\([0-9a-f]\{40\}\)";$/\1/p' crates/harness/src/exo/contract/mod.rs)"
+        test "${#revision}" -eq 40
+        printf 'revision=%s\n' "$revision" >> "$GITHUB_OUTPUT"
+    - name: Check out reviewed Exo source
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        repository: exoharness/exo
+        ref: ${{ steps.exo-revision.outputs.revision }}
+        path: target/exo-test-source
+        persist-credentials: false
+    - name: Install qualified Node runtime
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: '22.14.0'
+        package-manager-cache: false
+    - name: Install frozen Exo dependencies and stage owned extension
+      shell: bash
+      env:
+        COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+      run: |
+        set -euo pipefail
+        test "$(corepack pnpm@10.26.2 --version)" = "10.26.2"
+        corepack pnpm@10.26.2 --dir target/exo-test-source install --frozen-lockfile
+        mkdir -p target/exo-test-source/experiments/exo-agent/extension/src
+        cp experiments/exo-agent/extension/src/*.ts target/exo-test-source/experiments/exo-agent/extension/src/
+        cp experiments/exo-agent/extension/package.json target/exo-test-source/experiments/exo-agent/extension/
+        corepack pnpm@10.26.2 --dir target/exo-test-source/experiments/exo-agent/extension run check
+    - name: Build and pin Harness-owned executor fixture
+      shell: bash
+      run: |
+        set -euo pipefail
+        CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target/exo-executor" cargo build --locked --manifest-path experiments/exo-agent/bridge/Cargo.toml
+        source_path="$(realpath "$STS2_EXO_TEST_SOURCE")"
+        test "$source_path" = "$(realpath "$GITHUB_WORKSPACE/target/exo-test-source")"
+        revision="${{ steps.exo-revision.outputs.revision }}"
+        test "$(git -C "$source_path" rev-parse HEAD)" = "$revision"
+        node_path="$(realpath "$(command -v node)")"
+        test -f "$node_path" && test -x "$node_path"
+        node_version="$("$node_path" --version)"
+        test "$node_version" = "v22.14.0"
+        node_sha="$(sha256sum "$node_path" | cut -d' ' -f1)"
+        test "$node_sha" = "1abce2374a485bddae3c27b17a3e3143e2780232026e627c4fe74ddde3f380a1"
+        expected_executor="$GITHUB_WORKSPACE/target/exo-executor/debug/sts2-exo-executor"
+        executor_path="$(realpath "$expected_executor")"
+        test "$executor_path" = "$expected_executor"
+        test -f "$executor_path" && test -x "$executor_path"
+        test -f experiments/exo-agent/bridge/Cargo.toml && test -f experiments/exo-agent/bridge/Cargo.lock
+        manifest_sha="$(sha256sum experiments/exo-agent/bridge/Cargo.toml | cut -d' ' -f1)"
+        lock_sha="$(sha256sum experiments/exo-agent/bridge/Cargo.lock | cut -d' ' -f1)"
+        executor_sha="$(sha256sum "$executor_path" | cut -d' ' -f1)"
+        printf 'STS2_EXO_TEST_NODE=%s\nSTS2_EXO_TEST_EXECUTOR_BINARY=%s\n' "$node_path" "$executor_path" >> "$GITHUB_ENV"
+        printf 'Exo source %s\nNode SHA256 %s\nExecutor manifest SHA256 %s\nExecutor lock SHA256 %s\nExecutor SHA256 %s\n' "$revision" "$node_sha" "$manifest_sha" "$lock_sha" "$executor_sha" >> "$GITHUB_STEP_SUMMARY"
