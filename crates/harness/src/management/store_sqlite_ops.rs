@@ -19,6 +19,7 @@ pub(super) use export::export;
 #[path = "store_sqlite_create.rs"]
 mod create;
 pub(crate) use create::create_run;
+pub(crate) use create::create_seeded_run;
 #[path = "store_sqlite_submission.rs"]
 mod submission;
 pub(crate) use submission::update_run_snapshot;
@@ -219,6 +220,27 @@ pub(super) fn apply_command(
             "port_revision_mismatch",
             "execution port returned an unexpected run revision",
         ));
+    }
+    let seed_record = transaction
+        .query_row(
+            "SELECT record FROM management_seed_bindings WHERE workflow_run_id = ?1",
+            [request.run_id.as_str()],
+            |row| row.get::<_, Vec<u8>>(0),
+        )
+        .optional()
+        .map_err(sqlite_error)?;
+    if let Some(bytes) = seed_record {
+        let record = decode::<super::super::super::contract_seed_v2::StoredSeedBindingV2>(&bytes)?;
+        super::super::super::seed_v2_crypto::validate_candidate_record(&record)
+            .map_err(|_| StoreError::new("store_corrupt", "stored seed binding is invalid"))?;
+        if snapshot.admission.as_ref() != Some(&record.admitted_configuration)
+            || application.snapshot.admission.as_ref() != Some(&record.admitted_configuration)
+        {
+            return Err(StoreError::new(
+                "seed_admission_immutable",
+                "a seed-bound run cannot change its owner admission tuple",
+            ));
+        }
     }
     let sequence = next_sequence(&transaction, &request.run_id)?;
     let classification = application.outcome.classification(&application.reason_code);

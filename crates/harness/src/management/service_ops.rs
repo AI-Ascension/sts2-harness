@@ -101,10 +101,31 @@ impl ManagementService {
         let snapshot = self.store.get_run(run_id)?.ok_or_else(|| {
             ManagementError::invalid("run_not_found", "workflow run was not found")
         })?;
-        let recovery = self
-            .execution
-            .recovery_admission(&snapshot)
-            .unwrap_or_else(|| recovery_admission(&snapshot));
+        let recovery = if self.store.supports_durable_seed_bindings() {
+            match self.store.read_seed_binding(run_id)? {
+                Some(record)
+                    if matches!(
+                        record.record().state,
+                        super::super::contract_seed_v2::SeedBindingStateV2::CandidatePersisted
+                            | super::super::contract_seed_v2::SeedBindingStateV2::AwaitingHostContext
+                    ) =>
+                {
+                    // Candidate persistence is deliberately before the host
+                    // context gate. These states prove no host effect was
+                    // admitted, so ordinary live recovery must not misclassify
+                    // them as an unresolved launch.
+                    RecoveryAdmission::NoPendingEffects
+                }
+                _ => self
+                    .execution
+                    .recovery_admission(&snapshot)
+                    .unwrap_or_else(|| recovery_admission(&snapshot)),
+            }
+        } else {
+            self.execution
+                .recovery_admission(&snapshot)
+                .unwrap_or_else(|| recovery_admission(&snapshot))
+        };
         Ok(StatusResponse {
             schema_version: STATUS_SCHEMA_VERSION.to_owned(),
             accepted_plan_revision: None,

@@ -43,6 +43,20 @@ mod catalog_drift_tests;
 #[path = "production_duplicate_cleanup_tests.rs"]
 mod duplicate_cleanup_tests;
 
+/// The additive served seed-v2 route persists an idempotent candidate before
+/// the live adapter can open a runtime/provider or launch an episode.
+#[cfg(test)]
+#[path = "production_seed_v2_tests.rs"]
+mod seed_v2_tests;
+
+#[cfg(test)]
+#[path = "production_seed_v2_support.rs"]
+mod seed_v2_support;
+
+#[cfg(test)]
+#[path = "production_seed_v2_store_tests.rs"]
+mod seed_v2_store_tests;
+
 /// Counts the boundary crossings a fence is supposed to prevent.
 #[derive(Default, PartialEq, Eq, Debug)]
 pub(super) struct Counters {
