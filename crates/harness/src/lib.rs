@@ -161,30 +161,7 @@ pub use exact_transition::{
     TRANSITION_COMMITMENT_VERSION, TRANSITION_DOMAIN, TraceComparison, TraceOutcome,
     TransitionError, TransitionRecord, TransitionTrace, compare_traces, split_by_ancestry,
 };
-pub use execution::{
-    AttemptKind, AttemptState, BLOB_DIGEST_PREFIX, BlobDigest, CHECKPOINT_MANIFEST_DOMAIN,
-    CatalogEvidence, Checkpoint, CompletionRecord, CompletionStatus, DecisionReference,
-    EXACT_CHECKPOINT_ID_PREFIX, EXACT_STATE_DIGEST_PREFIX, ExactArtifactStore, ExactAssurance,
-    ExactCheckpointError, ExactCheckpointId, ExactCheckpointReference, ExactRetentionPlan,
-    ExactStateDigest, ExecutionFingerprint, ExecutionLineage, ExecutionStore, ExecutionStoreConfig,
-    ExecutionStoreError, GameOperationId, InvocationOutcome, InvocationState, JobClaim,
-    JobClaimOutcome, JobState, MAX_BOUNDARY_LABEL_BYTES, MAX_CATALOG_BYTES, MAX_EXACT_BLOB_BYTES,
-    MAX_OPERATION_ACTION_BYTES, MAX_ORIGINAL_CONTEXT_BYTES, MAX_WORKFLOW_BYTES,
-    MAX_WORKFLOW_COUNTER_NAME_BYTES, MAX_WORKFLOW_COUNTERS, MAX_WORKFLOW_CURSOR,
-    MAX_WORKFLOW_STACK_DEPTH, OperationIntent, OperationState, ProviderFailureClass,
-    ProviderReservation, ProviderReservationState, RECOVERY_CONTRACT_VERSION,
-    RECOVERY_SCHEMA_DIGEST, RecoveryDisposition, ResumeState, RetentionError, RunProjection,
-    RunStatus, StorePragmas, StoredAttempt, StoredDecision, StoredEpisode, StoredJob,
-    StoredOperation, StoredWorkerHandoff, StoredWorkflowInvocation, WORKER_EMPTY_PARAMETERS_DIGEST,
-    WORKER_HANDOFF_CONTRACT, WORKER_HANDOFF_SCHEMA_DIGEST, WORKER_MAX_ATTEMPT_NUMBER,
-    WORKFLOW_CONTRACT_VERSION, WorkerAdmissionContext, WorkerAdmissionOutcome, WorkerBoot,
-    WorkerCompletionStatus, WorkerControlMode, WorkerControlRequest, WorkerControlState,
-    WorkerExecutionPermit, WorkerHandoffState, WorkerLookup, WorkerOwnerProof,
-    WorkerReservationState, WorkerTerminalReceipt, WorkerTuple, WorkflowCommandId,
-    WorkflowDefinition, WorkflowDefinitionId, WorkflowEpisodeId, WorkflowEvent, WorkflowEventId,
-    WorkflowEventPayload, WorkflowInvocation, WorkflowInvocationId, WorkflowPlan, WorkflowPlanId,
-    WorkflowRunId, WorkflowRunSnapshot, WorkflowRunStart, plan_retention, sweep,
-};
+include!("execution_exports.rs");
 pub use execution_cancellation::ExecutionCancellation;
 pub use exo::{
     BoundDecision, CodexEventAccounting, CodexEventError, CodexStreamStatus, CodexTokenUsage,

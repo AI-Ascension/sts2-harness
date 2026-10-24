@@ -307,3 +307,7 @@ fn catalog_reobserve_once<P: EpisodeRuntimePort>(
     accept_observation(machine, observation.clone())?;
     Ok(observation)
 }
+
+#[cfg(test)]
+#[path = "runner_map_snapshot_order_tests.rs"]
+mod map_snapshot_order_tests;

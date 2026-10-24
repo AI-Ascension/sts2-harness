@@ -82,7 +82,7 @@ impl EpisodeRuntimePort for RuntimeV3Port {
         &mut self,
         state_id: &str,
         generation: u64,
-        _execution_id: sts2_harness::ModelExecutionId,
+        execution_id: sts2_harness::ModelExecutionId,
     ) -> Result<Option<Value>, sts2_harness::PortError> {
         if self.current_state.as_deref() != Some(state_id) || self.generation != generation {
             return Err(wire::port_error(
@@ -91,9 +91,36 @@ impl EpisodeRuntimePort for RuntimeV3Port {
                 false,
             ));
         }
-        super::runtime_map::snapshot(&self.config, generation)
-            .map(Some)
-            .map_err(|error| wire::port_error("map_snapshot_failed", error, false))
+        let durable = self.durable.as_ref().ok_or_else(|| {
+            wire::port_error(
+                "map_receipt_unavailable",
+                "map context requires the durable invocation receipt store",
+                false,
+            )
+        })?;
+        let actions = self.current_actions.as_ref().ok_or_else(|| {
+            wire::port_error(
+                "map_actions_unavailable",
+                "map context requires the already admitted action catalog",
+                false,
+            )
+        })?;
+        actions.assert_matches(state_id, generation).map_err(|_| {
+            wire::port_error(
+                "map_actions_stale",
+                "map context action catalog no longer matches the observation",
+                false,
+            )
+        })?;
+        super::durable::collect_map_snapshot_for_port(
+            durable,
+            state_id,
+            generation,
+            execution_id,
+            actions,
+            || super::runtime_map::snapshot(&self.config, generation),
+        )
+        .map(Some)
     }
 
     fn dispatch_action(

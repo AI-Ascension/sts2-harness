@@ -24,10 +24,13 @@ mod checkpoints;
 mod identity;
 #[path = "runtime_v3_durable_operations.rs"]
 mod operations;
+#[path = "runtime_v3_durable_recipe.rs"]
+mod recipe;
 #[path = "runtime_v3_durable_support.rs"]
 mod support;
 
 pub(super) use operations::OperationCatalogEvidence;
+pub(super) use recipe::collect_map_snapshot_for_port;
 
 use support::{config_digest, fingerprint, optional_env, sha256_bytes, sha256_json};
 
@@ -49,8 +52,14 @@ pub(crate) struct DurableHandle {
     fingerprint: ExecutionFingerprint,
     model_revision: String,
     config_digest: String,
+    map_instance_id: String,
+    map_gateway_session_id: String,
+    map_mcp_session_id: String,
+    map_lease_id: String,
+    map_lease_epoch: u64,
     next_checkpoint: Rc<RefCell<u64>>,
     resume_boundary: Rc<RefCell<Option<Checkpoint>>>,
+    pending_recipe_invocation: Rc<RefCell<Option<sts2_harness::RecipeInvocationBinding>>>,
 }
 
 impl DurableHandle {
@@ -83,9 +92,15 @@ impl DurableHandle {
             lineage,
             fingerprint,
             model_revision: String::from("synthetic-test-provider"),
-            config_digest: String::from("synthetic-test-config"),
+            config_digest: sha256_bytes(b"synthetic-test-config"),
+            map_instance_id: String::from("instance-1"),
+            map_gateway_session_id: String::from("gateway-session-1"),
+            map_mcp_session_id: String::from("mcp-session-1"),
+            map_lease_id: String::from("lease-1"),
+            map_lease_epoch: 1,
             next_checkpoint: Rc::new(RefCell::new(next_checkpoint)),
             resume_boundary: Rc::new(RefCell::new(None)),
+            pending_recipe_invocation: Rc::new(RefCell::new(None)),
         })
     }
 
@@ -108,6 +123,7 @@ impl DurableHandle {
         settings: &RuntimeV3Settings,
         resume_requested: bool,
     ) -> Result<(Self, ResumeState), String> {
+        config.validate()?;
         let attempt_id = optional_env("STS2_ATTEMPT_ID")?
             .unwrap_or_else(|| format!("attempt-{}", config.episode_id));
         let lineage = ExecutionLineage::new(
@@ -186,8 +202,14 @@ impl DurableHandle {
             fingerprint,
             model_revision: settings.exo.revision.clone(),
             config_digest: handle_config_digest,
+            map_instance_id: config.instance_id.clone(),
+            map_gateway_session_id: config.session_id.clone(),
+            map_mcp_session_id: config.mcp_session_id.clone(),
+            map_lease_id: config.lease_id.clone(),
+            map_lease_epoch: config.lease_epoch,
             next_checkpoint: Rc::new(RefCell::new(next_checkpoint)),
             resume_boundary: Rc::new(RefCell::new(resume_boundary)),
+            pending_recipe_invocation: Rc::new(RefCell::new(None)),
         };
         Ok((handle, state))
     }

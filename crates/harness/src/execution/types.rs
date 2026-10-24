@@ -8,6 +8,8 @@ mod core;
 mod enums;
 #[path = "types_error.rs"]
 mod error;
+#[path = "types_recipe_invocation.rs"]
+pub(crate) mod recipe_invocation;
 #[path = "types_records.rs"]
 mod records;
 #[path = "types_worker.rs"]
@@ -25,6 +27,10 @@ pub use enums::{
     ProviderReservationState, RecoveryDisposition,
 };
 pub use error::ExecutionStoreError;
+pub use recipe_invocation::{
+    RecipeInvocationBinding, RecipeInvocationContext, RecipeInvocationReceipt,
+    RecipeInvocationStatus,
+};
 pub use records::{
     CompletionRecord, DecisionReference, JobClaim, JobClaimOutcome, MAX_OPERATION_ACTION_BYTES,
     MAX_ORIGINAL_CONTEXT_BYTES, OperationIntent, ProviderReservation, ResumeState, StoredAttempt,
