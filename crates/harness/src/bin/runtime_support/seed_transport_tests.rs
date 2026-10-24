@@ -5,6 +5,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::Value;
+use sts2_harness::seed_binding::{MAX_SEED_BYTES, canonicalize_seed};
 
 use super::SeedTransportConfig;
 use super::validation::{context_digest, validate_context, validate_plan};
@@ -105,6 +106,78 @@ fn plan_requires_explicit_contiguous_ordinals_and_bounded_seed() {
     invalid.entries[1].ordinal = 1;
     invalid.entries[1].requested_seed = "x".repeat(65);
     assert!(validate_plan(&invalid).is_err());
+}
+
+#[test]
+fn plan_seed_validation_matches_canonical_bytes_without_normalizing() {
+    let exact_ascii = "a".repeat(MAX_SEED_BYTES);
+    let oversized_ascii = "a".repeat(MAX_SEED_BYTES + 1);
+    let exact_multibyte = format!("{}ab", "é".repeat(31));
+    let oversized_multibyte = format!("{}abc", "é".repeat(31));
+    assert_eq!(exact_multibyte.len(), MAX_SEED_BYTES);
+    assert_eq!(oversized_multibyte.len(), MAX_SEED_BYTES + 1);
+
+    let cases = [
+        ("empty", String::new(), false),
+        ("leading ASCII space", String::from(" seed"), false),
+        ("trailing ASCII space", String::from("seed "), false),
+        (
+            "leading Unicode whitespace",
+            String::from("\u{2003}seed"),
+            false,
+        ),
+        (
+            "trailing Unicode whitespace",
+            String::from("seed\u{2003}"),
+            false,
+        ),
+        (
+            "control character",
+            String::from("seed\u{0001}value"),
+            false,
+        ),
+        ("NUL", String::from("seed\0value"), false),
+        ("64 ASCII bytes", exact_ascii, true),
+        ("65 ASCII bytes", oversized_ascii, false),
+        ("64 UTF-8 bytes", exact_multibyte, true),
+        ("65 UTF-8 bytes", oversized_multibyte, false),
+        (
+            "interior ASCII whitespace",
+            String::from("seed with space"),
+            true,
+        ),
+        (
+            "interior Unicode whitespace",
+            String::from("seed\u{2003}middle"),
+            true,
+        ),
+    ];
+
+    for (case, requested_seed, expected_valid) in cases {
+        let library = canonicalize_seed(&requested_seed);
+        let plan = super::PlanDocument {
+            entries: vec![super::PlanEntry {
+                ordinal: 0,
+                requested_seed: requested_seed.clone(),
+            }],
+        };
+        let transport = validate_plan(&plan);
+
+        assert_eq!(transport.is_ok(), library.is_ok(), "{case}");
+        assert_eq!(transport.is_ok(), expected_valid, "{case}");
+        assert_eq!(plan.entries[0].ordinal, 0, "{case}");
+        assert_eq!(plan.entries[0].requested_seed, requested_seed, "{case}");
+        if expected_valid {
+            assert_eq!(library.as_deref(), Ok(requested_seed.as_str()), "{case}");
+        } else {
+            assert_eq!(
+                transport.err().as_deref(),
+                Some("requested seed is empty, unsafe, or oversized"),
+                "{case}"
+            );
+            assert!(library.is_err(), "{case}");
+        }
+    }
 }
 
 #[test]

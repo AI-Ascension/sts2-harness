@@ -2,10 +2,11 @@
 
 use serde::Serialize;
 use sha2::{Digest, Sha256};
+use sts2_harness::seed_binding::canonicalize_seed;
 
 use super::{
     ContextDigestInput, MAX_ACTS, MAX_CONTEXT_TEXT_BYTES, MAX_ENTRIES, MAX_IDENTITY_BYTES,
-    MAX_MODIFIERS, MAX_SEED_BYTES, PlanDocument, SelectedContext,
+    MAX_MODIFIERS, PlanDocument, SelectedContext,
 };
 
 pub(super) fn validate_plan(plan: &PlanDocument) -> Result<(), String> {
@@ -112,12 +113,12 @@ pub(super) fn validate_recorded_context(
 }
 
 fn validate_seed(value: &str) -> Result<(), String> {
-    if value.is_empty() || value.len() > MAX_SEED_BYTES || value.chars().any(char::is_control) {
-        return Err(String::from(
+    match canonicalize_seed(value) {
+        Ok(_) => Ok(()),
+        Err(_) => Err(String::from(
             "requested seed is empty, unsafe, or oversized",
-        ));
+        )),
     }
-    Ok(())
 }
 
 fn identity(value: &str, name: &str) -> Result<(), String> {

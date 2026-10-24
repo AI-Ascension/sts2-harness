@@ -25,7 +25,6 @@ use validation::{
 
 const MAX_PLAN_BYTES: usize = 256 * 1024;
 const MAX_ENTRIES: usize = 1024;
-const MAX_SEED_BYTES: usize = 64;
 const MAX_IDENTITY_BYTES: usize = 128;
 const MAX_CONTEXT_TEXT_BYTES: usize = 128;
 const MAX_MODIFIERS: usize = 32;
