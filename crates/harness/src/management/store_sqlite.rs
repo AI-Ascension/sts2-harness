@@ -12,6 +12,7 @@ use super::super::contract::{
     RunSnapshot,
 };
 use super::{CommandAcceptance, CommandApplication, StoreError, SubmissionLookup, WorkflowStore};
+use super::{SeedBindingLookup, SeedBindingRecord};
 
 #[path = "store_sqlite_context_history.rs"]
 mod context_history;
@@ -19,6 +20,8 @@ mod context_history;
 mod ops;
 #[path = "store_sqlite_runtime.rs"]
 mod runtime;
+#[path = "store_sqlite_seed_binding.rs"]
+mod seed_binding;
 #[path = "store_sqlite_support.rs"]
 mod support;
 
@@ -82,6 +85,58 @@ impl SqliteWorkflowStore {
 }
 
 impl WorkflowStore for SqliteWorkflowStore {
+    fn supports_durable_seed_bindings(&self) -> bool {
+        true
+    }
+
+    fn lookup_seed_binding(
+        &self,
+        request_id: &str,
+        actor_digest: &str,
+        request_digest: &str,
+    ) -> Result<SeedBindingLookup, StoreError> {
+        seed_binding::lookup(self, request_id, actor_digest, request_digest)
+    }
+
+    fn create_seeded_run(
+        &self,
+        request_id: &str,
+        request_digest: &str,
+        snapshot: RunSnapshot,
+        initial_events: Vec<RunEvent>,
+        seed_binding: SeedBindingRecord,
+    ) -> Result<(), StoreError> {
+        ops::create_seeded_run(
+            self,
+            request_id,
+            request_digest,
+            snapshot,
+            initial_events,
+            seed_binding.into_record(),
+        )
+    }
+
+    fn read_seed_binding(
+        &self,
+        workflow_run_id: &str,
+    ) -> Result<Option<SeedBindingRecord>, StoreError> {
+        seed_binding::read(self, workflow_run_id)
+    }
+
+    fn mark_seed_binding_awaiting_host_context(
+        &self,
+        workflow_run_id: &str,
+        actor_digest: &str,
+        request_digest: &str,
+    ) -> Result<SeedBindingRecord, StoreError> {
+        seed_binding::mark_awaiting_host_context(
+            self,
+            workflow_run_id,
+            actor_digest,
+            request_digest,
+        )
+    }
+
     fn supports_context_binding_history(&self) -> bool {
         true
     }

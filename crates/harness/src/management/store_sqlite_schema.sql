@@ -14,6 +14,16 @@ CREATE TABLE IF NOT EXISTS management_runs (
     oldest_sequence INTEGER
 );
 
+-- Versioned authored seeds are opaque management records. Their request,
+-- actor, run, initial snapshot/events, and candidate commit atomically.
+CREATE TABLE IF NOT EXISTS management_seed_bindings (
+    workflow_run_id TEXT PRIMARY KEY NOT NULL REFERENCES management_runs(workflow_run_id),
+    request_id TEXT NOT NULL UNIQUE REFERENCES management_submissions(request_id),
+    actor_digest TEXT NOT NULL CHECK(length(actor_digest) = 64),
+    request_digest TEXT NOT NULL CHECK(length(request_digest) = 64),
+    record BLOB NOT NULL CHECK(length(record) <= 8192)
+);
+
 CREATE TABLE IF NOT EXISTS management_events (
     workflow_run_id TEXT NOT NULL REFERENCES management_runs(workflow_run_id),
     sequence INTEGER NOT NULL,

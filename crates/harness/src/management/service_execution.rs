@@ -7,6 +7,7 @@ use super::super::contract::{
     CommandRequest, PendingOperation, RecoveryAdmission, RunEvent, RunRequest, RunSnapshot,
     TargetAdmissionBinding,
 };
+use super::super::store::SeedBindingRecord;
 use super::super::store::WorkflowStore;
 use super::ManagementError;
 
@@ -21,6 +22,7 @@ pub struct RunReservation {
     definition_digest: String,
     binding: Option<TargetAdmissionBinding>,
     context_control_limits: Option<super::super::context_owner::ContextOwnerControlLimits>,
+    seed_binding: Option<super::super::contract_seed_v2::StoredSeedBindingV2>,
     snapshot: Mutex<Option<RunSnapshot>>,
 }
 
@@ -40,6 +42,27 @@ impl RunReservation {
             definition_digest,
             binding,
             context_control_limits,
+            seed_binding: None,
+            snapshot: Mutex::new(None),
+        }
+    }
+
+    pub(crate) fn for_seed_candidate(
+        store: Arc<dyn WorkflowStore>,
+        request_id: String,
+        request_digest: String,
+        definition_digest: String,
+        binding: Option<TargetAdmissionBinding>,
+        seed_binding: super::super::contract_seed_v2::StoredSeedBindingV2,
+    ) -> Self {
+        Self {
+            store,
+            request_id,
+            request_digest,
+            definition_digest,
+            binding,
+            context_control_limits: None,
+            seed_binding: Some(seed_binding),
             snapshot: Mutex::new(None),
         }
     }
@@ -53,6 +76,10 @@ impl RunReservation {
         self.context_control_limits.as_ref()
     }
 
+    pub(crate) fn is_seed_candidate(&self) -> bool {
+        self.seed_binding.is_some()
+    }
+
     pub(crate) fn reserve(&self, candidate: &RunAdmission) -> Result<(), ManagementError> {
         let mut durable = candidate.clone();
         durable.snapshot = super::target_admission::bind_snapshot_admission(
@@ -61,12 +88,44 @@ impl RunReservation {
         )?;
         super::support::verify_admission(&durable, &self.definition_digest)?;
         let persisted_snapshot = durable.snapshot.clone();
-        self.store.create_run(
-            &self.request_id,
-            &self.request_digest,
-            durable.snapshot,
-            durable.initial_events,
-        )?;
+        match self.seed_binding.as_ref() {
+            Some(seed_binding) => {
+                if !self.store.supports_durable_seed_bindings() {
+                    return Err(ManagementError::unavailable(
+                        "seed_binding_store_unavailable",
+                        "workflow store cannot atomically persist versioned seed bindings",
+                    ));
+                }
+                self.store.create_seeded_run(
+                    &self.request_id,
+                    &self.request_digest,
+                    durable.snapshot,
+                    durable.initial_events,
+                    SeedBindingRecord::new(seed_binding.clone()),
+                )?;
+                let stored = self
+                    .store
+                    .read_seed_binding(&candidate.snapshot.workflow_run_id)?
+                    .ok_or_else(|| {
+                        ManagementError::store(
+                            "seed_binding_readback_missing",
+                            "durable seed binding was missing after reservation",
+                        )
+                    })?;
+                if stored.record() != seed_binding {
+                    return Err(ManagementError::conflict(
+                        "seed_binding_readback_mismatch",
+                        "durable seed binding differed from the candidate reservation",
+                    ));
+                }
+            }
+            None => self.store.create_run(
+                &self.request_id,
+                &self.request_digest,
+                durable.snapshot,
+                durable.initial_events,
+            )?,
+        }
         *self.snapshot.lock().map_err(|_| {
             ManagementError::store(
                 "reservation_state_lock",
@@ -140,6 +199,23 @@ pub trait WorkflowExecutionPort: Send + Sync {
         let result = self.submit_admitted(request, actor, definition_digest, admission)?;
         reserve.reserve(&result)?;
         Ok(result)
+    }
+
+    /// Persist a seed candidate through the pre-effect reservation path only.
+    /// The default refuses without calling a compatibility adapter that might
+    /// submit or mutate before its reservation callback.
+    fn prepare_seed_candidate_with_reservation(
+        &self,
+        _request: &RunRequest,
+        _actor: &AuthContext,
+        _definition_digest: &str,
+        _admission: Option<&TargetAdmissionBinding>,
+        _reserve: &RunReservation,
+    ) -> Result<RunAdmission, ManagementError> {
+        Err(ManagementError::unavailable(
+            "seed_pre_effect_reservation_unavailable",
+            "execution adapter cannot reserve a seed candidate before effects",
+        ))
     }
 
     /// Returns an execution-adapter-specific recovery admission when the
