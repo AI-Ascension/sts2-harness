@@ -17,6 +17,7 @@ use crate::context_control::{ManagedRenderInput, PreparedContext};
 use crate::exo::{Decision, ExoError, ExoSession};
 use crate::identity::ModelExecutionId;
 use crate::management::ContextRenderSource;
+use serde_json::Value;
 
 #[path = "policy_router_game_information.rs"]
 mod game_information;
@@ -48,6 +49,27 @@ impl DecisionInput {
             objective: objective.into(),
             hard_constraints,
         }
+    }
+
+    /// Parses a runtime map response through the owner validator and returns its canonical digest.
+    ///
+    /// The supplied action set must be the already admitted catalog for this observation.
+    #[must_use]
+    pub fn canonical_runtime_map_snapshot_digest(
+        response: &Value,
+        state_id: &str,
+        generation: u64,
+        actions: &EpisodeLegalActionSet,
+    ) -> Option<String> {
+        MapDecisionContext::from_mcp_value(response, state_id, generation, actions)
+            .ok()
+            .map(|context| context.snapshot_digest().to_owned())
+    }
+
+    /// Returns the digest of the map context already accepted for this decision input.
+    #[must_use]
+    pub fn accepted_map_snapshot_digest(&self) -> Option<&str> {
+        self.map_context().map(|context| context.snapshot_digest())
     }
 
     #[must_use]
