@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 use crate::{
-    lookup_bootstrap,
+    lookup_bootstrap, lookup_manifest,
     lookup_wire::{self as wire, Frame, Payload},
 };
 use async_trait::async_trait;
@@ -30,15 +30,19 @@ pub enum LookupProfile {
     Terminal,
     Bootstrap,
     History,
+    ContentManifest,
 }
 
 impl LookupProfile {
     fn admits_bootstrap(self) -> bool {
-        matches!(self, Self::Bootstrap | Self::History)
+        matches!(
+            self,
+            Self::Bootstrap | Self::History | Self::ContentManifest
+        )
     }
 
     fn admits_history(self) -> bool {
-        self == Self::History
+        matches!(self, Self::History | Self::ContentManifest)
     }
 }
 
@@ -143,6 +147,15 @@ fn tool_payload_with_profile(
     }
     let arguments = Value::Object(request.arguments.clone());
     match request.function_name.as_str() {
+        "sts2_lookup_content_manifest" | "sts2_lookup_manifest_read" => {
+            if profile != LookupProfile::ContentManifest {
+                return Err("exo_lookup_tool_denied");
+            }
+            lookup_manifest::payload(
+                arguments,
+                request.function_name == "sts2_lookup_manifest_read",
+            )
+        }
         "sts2_lookup_query" => Ok(Payload::Query { arguments }),
         "sts2_lookup_bootstrap" => {
             if !profile.admits_bootstrap() {
@@ -222,6 +235,36 @@ mod tests {
             .arguments
             .insert("data".into(), json!("x".repeat(wire::TOOL_BYTES)));
         assert!(tool_payload(&request).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn manifest_tools_require_explicit_profile() -> Result<(), Box<dyn std::error::Error>> {
+        for (name, arguments) in [
+            (
+                "sts2_lookup_content_manifest",
+                json!({"operation_id":"manifest-1"}),
+            ),
+            (
+                "sts2_lookup_manifest_read",
+                json!({"record_ordinal":31,"offset":131072}),
+            ),
+        ] {
+            let request: ToolRequest = serde_json::from_value(json!({
+                "function_name":name,"arguments":arguments
+            }))?;
+            for profile in [
+                LookupProfile::Terminal,
+                LookupProfile::Bootstrap,
+                LookupProfile::History,
+            ] {
+                assert!(tool_payload_with_profile(&request, profile).is_err());
+            }
+            let payload = tool_payload_with_profile(&request, LookupProfile::ContentManifest)?;
+            assert_eq!(wire::version_for_payload(&payload), wire::MANIFEST_VERSION);
+        }
+        assert!(LookupProfile::ContentManifest.admits_bootstrap());
+        assert!(LookupProfile::ContentManifest.admits_history());
         Ok(())
     }
 
