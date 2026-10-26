@@ -120,13 +120,13 @@ describe("explicit content-manifest extension profile (synthetic owned callback 
     [4, {}], [4, { operation_id: "" }], [4, { operation_id: "x".repeat(65) }],
     [4, { operation_id: "é" }], [4, { operation_id: "id/path" }],
     [4, { operation_id: "line\nfeed" }], [4, { operation_id: null }], [4, { operation_id: 1 }],
-    ...["\n", "\r", "\r\n", "\u2028", "\u2029"].map((end) => [4, { operation_id: `manifest-1${end}` }]),
+    ...["\n", "\r", "\r\n", "\u2028", "\u2029"].map((end): [number, JsonObject] => [4, { operation_id: `manifest-1${end}` }]),
     [5, {}], [5, { record_ordinal: 0 }], [5, { record_ordinal: -1, offset: 0 }],
     [5, { record_ordinal: 32, offset: 0 }], [5, { record_ordinal: 0.5, offset: 0 }],
     [5, { record_ordinal: "0", offset: 0 }], [5, { record_ordinal: 0, offset: -1 }],
     [5, { record_ordinal: 0, offset: 131073 }], [5, { record_ordinal: 0, offset: 0.5 }],
     [5, { record_ordinal: 0, offset: null }], [5, { manifest_record_ordinal: 0, offset: 0 }],
-    ...["scope", "locale", "content_manifest_id", "snapshot_id", "instance_id", "path", "source_sha256"].flatMap((key) => [
+    ...["scope", "locale", "content_manifest_id", "snapshot_id", "instance_id", "path", "source_sha256"].flatMap((key): [number, JsonObject][] => [
       [4, { operation_id: "manifest-1", [key]: "foreign" }],
       [5, { record_ordinal: 0, offset: 0, [key]: "foreign" }],
     ]),
