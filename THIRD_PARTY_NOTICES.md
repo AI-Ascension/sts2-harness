@@ -3,7 +3,7 @@
 ## System One in-process TLS transport
 
 The System One bridge performs its own HTTPS exchange, so the workspace gains a TLS client for the
-first time. The pinned set is `rustls` exactly `0.23.45` (Apache-2.0 OR ISC OR MIT;
+first time. The pinned set is `rustls` exactly `0.23.46` (Apache-2.0 OR ISC OR MIT;
 https://github.com/rustls/rustls) with the `ring` crypto backend exactly `0.17.14`
 (Apache-2.0 AND ISC), `webpki-roots` exactly `1.0.9` (CDLA-Permissive-2.0) as the compiled-in
 trust anchor, `rustls-pki-types` exactly `1.15.1` (MIT OR Apache-2.0), `rustls-webpki` `0.103.15`
