@@ -12,7 +12,7 @@ use std::io::{self, Write};
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 
 use crate::exo_private_state::GuardedRun;
@@ -155,33 +155,30 @@ fn isolated_preexisting_live_child_is_refused_without_reaping() -> Result<(), Bo
     if std::env::var_os(CHILD_MODE).as_deref() != Some(std::ffi::OsStr::new("live-child")) {
         return Ok(());
     }
-    let child = std::thread::spawn(|| {
-        Command::new("/bin/sh")
-            .arg("-c")
-            .arg("read trigger; exit 0")
-            .stdin(Stdio::piped())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
+    let mut command = Command::new("/bin/sh");
+    command
+        .arg("-c")
+        .arg("read trigger; exit 0")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    with_preexisting_child(command, |child| {
+        assert_eq!(
+            BridgeChildScope::enable().err(),
+            Some("exo_private_preexisting_child")
+        );
+        let mut input = child
+            .stdin
+            .take()
+            .ok_or_else(|| io::Error::other("live child stdin was not piped"))?;
+        input.write_all(b"start\n")?;
+        drop(input);
+        assert!(
+            child.wait()?.success(),
+            "the refused live child remains owned"
+        );
+        Ok(())
     })
-    .join()
-    .map_err(|_| io::Error::other("child-spawn thread panicked"))??;
-    assert_eq!(
-        BridgeChildScope::enable().err(),
-        Some("exo_private_preexisting_child")
-    );
-    let mut child = child;
-    let mut input = child
-        .stdin
-        .take()
-        .ok_or_else(|| io::Error::other("live child stdin was not piped"))?;
-    input.write_all(b"start\n")?;
-    drop(input);
-    assert!(
-        child.wait()?.success(),
-        "the refused live child remains owned"
-    );
-    Ok(())
 }
 
 #[test]
@@ -189,42 +186,81 @@ fn isolated_preexisting_zombie_child_is_refused_without_reaping() -> Result<(), 
     if std::env::var_os(CHILD_MODE).as_deref() != Some(std::ffi::OsStr::new("zombie-child")) {
         return Ok(());
     }
-    let mut child = std::thread::spawn(|| {
-        Command::new("/bin/sh")
-            .arg("-c")
-            .arg("exit 0")
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
+    let mut command = Command::new("/bin/sh");
+    command
+        .arg("-c")
+        .arg("exit 0")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    with_preexisting_child(command, |child| {
+        let pid = child.id();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+        loop {
+            let stat = fs::read_to_string(format!("/proc/{pid}/stat"))?;
+            let state = stat
+                .rfind(')')
+                .and_then(|index| stat.get(index + 1..))
+                .and_then(|suffix| suffix.split_whitespace().next())
+                .and_then(|field| field.chars().next());
+            if state == Some('Z') {
+                break;
+            }
+            if std::time::Instant::now() >= deadline {
+                return Err(io::Error::other("preexisting child did not become a zombie").into());
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert_eq!(
+            BridgeChildScope::enable().err(),
+            Some("exo_private_preexisting_child")
+        );
+        assert!(
+            child.wait()?.success(),
+            "the refused zombie remains waitable"
+        );
+        Ok(())
     })
-    .join()
-    .map_err(|_| io::Error::other("child-spawn thread panicked"))??;
-    let pid = child.id();
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
-    loop {
-        let stat = fs::read_to_string(format!("/proc/{pid}/stat"))?;
-        let state = stat
-            .rfind(')')
-            .and_then(|index| stat.get(index + 1..))
-            .and_then(|suffix| suffix.split_whitespace().next())
-            .and_then(|field| field.chars().next());
-        if state == Some('Z') {
-            break;
+}
+
+// Keep the task that spawned the unrelated child alive throughout the refusal check. Joining
+// it before the /proc task scan introduces task-exit/reparenting into a test of child ownership.
+fn with_preexisting_child(
+    mut command: Command,
+    check: impl FnOnce(&mut Child) -> Result<(), Box<dyn Error>>,
+) -> Result<(), Box<dyn Error>> {
+    std::thread::scope(|scope| {
+        let (spawned_sender, spawned_receiver) = std::sync::mpsc::sync_channel(1);
+        let (release_sender, release_receiver) = std::sync::mpsc::sync_channel::<()>(0);
+        scope.spawn(move || {
+            // The guard also owns cleanup if delivery to the test thread fails.
+            let child = command.spawn().map(PreexistingChild);
+            let _ = spawned_sender.send(child);
+            let _ = release_receiver.recv();
+        });
+        let mut child = spawned_receiver.recv()??;
+        let result = check(&mut child.0);
+        // Declaration/drop order also cleans up before releasing the spawning task on unwind.
+        drop(child);
+        drop(release_sender);
+        result
+    })
+}
+
+struct PreexistingChild(Child);
+
+impl Drop for PreexistingChild {
+    fn drop(&mut self) {
+        let cleanup = super::owned_child::terminate_and_reap_bounded(
+            &mut self.0,
+            Duration::from_secs(1),
+        );
+        if let Err(error) = cleanup {
+            let _ = writeln!(
+                io::stderr().lock(),
+                "preexisting test child cleanup failed: {error}"
+            );
         }
-        if std::time::Instant::now() >= deadline {
-            return Err(io::Error::other("preexisting child did not become a zombie").into());
-        }
-        std::thread::sleep(std::time::Duration::from_millis(5));
     }
-    assert_eq!(
-        BridgeChildScope::enable().err(),
-        Some("exo_private_preexisting_child")
-    );
-    assert!(
-        child.wait()?.success(),
-        "the refused zombie remains waitable"
-    );
-    Ok(())
 }
 
 fn start_escaped_fixture(
@@ -268,3 +304,4 @@ fn required_test_path(name: &str) -> io::Result<PathBuf> {
         .map(PathBuf::from)
         .ok_or_else(|| io::Error::other(format!("missing test control path {name}")))
 }
+
