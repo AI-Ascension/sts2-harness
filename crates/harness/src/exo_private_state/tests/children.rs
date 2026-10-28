@@ -250,10 +250,8 @@ struct PreexistingChild(Child);
 
 impl Drop for PreexistingChild {
     fn drop(&mut self) {
-        let cleanup = super::owned_child::terminate_and_reap_bounded(
-            &mut self.0,
-            Duration::from_secs(1),
-        );
+        let cleanup =
+            super::owned_child::terminate_and_reap_bounded(&mut self.0, Duration::from_secs(1));
         if let Err(error) = cleanup {
             let _ = writeln!(
                 io::stderr().lock(),
@@ -304,4 +302,3 @@ fn required_test_path(name: &str) -> io::Result<PathBuf> {
         .map(PathBuf::from)
         .ok_or_else(|| io::Error::other(format!("missing test control path {name}")))
 }
-

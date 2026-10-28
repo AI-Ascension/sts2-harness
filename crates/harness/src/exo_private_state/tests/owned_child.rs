@@ -300,4 +300,3 @@ fn report_cleanup_error(message: &str) {
 #[cfg(test)]
 #[path = "owned_child_tests.rs"]
 mod tests;
-

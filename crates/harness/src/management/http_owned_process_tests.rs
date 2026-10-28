@@ -150,4 +150,3 @@ fn a_read_only_post_stall_is_unavailable_and_backend_replacement_invalidates_oth
     assert_eq!(service::recorded(&fixture.root, "opens"), ["healthy-run"]);
     fixture.stop();
 }
-
