@@ -39,14 +39,21 @@ fn isolated_http_entry() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn a_stalled_write_is_terminated_and_recovery_never_opens_the_session_twice() {
-    let mut fixture = Fixture::start(false);
+    // Lifecycle assertions require durable admission before the injected stall. Keep
+    // the separate 250 ms deadline probes unchanged; use the existing capacity
+    // fixture budget here rather than assuming admission completes in 250 ms.
+    let mut fixture = Fixture::start_with_budget(false, 2500);
     let backend = fixture.process("backend", 0);
     let supervisor = fixture.process("supervisor", 0);
     let started = Instant::now();
     let request = body("stall-write-once");
     let response = fixture.request("POST", "/v1/workflow-runs", Some(&request));
     assert_eq!(response.status, 503);
-    assert!(started.elapsed() < Duration::from_secs(4));
+    assert!(
+        started.elapsed() < Duration::from_secs(6),
+        "2.5 s dispatch plus bounded retirement must finish: {}",
+        fixture.logs()
+    );
     let response = value(response);
     assert_eq!(response["schema_version"], "ascension.management-error/v2");
     assert_eq!(response["error"]["class"], "write_state_unknown");
@@ -54,7 +61,9 @@ fn a_stalled_write_is_terminated_and_recovery_never_opens_the_session_twice() {
     assert_exited(&backend);
     assert_eq!(
         service::recorded(&fixture.root, "opens"),
-        ["stall-write-once"]
+        ["stall-write-once"],
+        "the injected stall must be reached before retirement: {}",
+        fixture.logs()
     );
     assert_eq!(service::recorded(&fixture.root, "descendant").len(), 1);
     let pending = value(fixture.request("GET", "/v1/workflow-submissions/stall-write-once", None));
@@ -89,7 +98,7 @@ fn a_stalled_write_is_terminated_and_recovery_never_opens_the_session_twice() {
     fixture.stop();
     assert_exited(&supervisor);
     let logs = fixture.logs();
-    assert!(logs.contains("budget_ms=250"));
+    assert!(logs.contains("budget_ms=2500"));
     assert!(
         logs.contains("dispatch_timeout") || diagnostic_loss > 0,
         "retirement can lose a queued marker only with explicit diagnostic loss"
@@ -99,8 +108,19 @@ fn a_stalled_write_is_terminated_and_recovery_never_opens_the_session_twice() {
 
 #[test]
 fn a_read_only_post_stall_is_unavailable_and_backend_replacement_invalidates_other_live_sessions() {
-    let mut fixture = Fixture::start(false);
-    let healthy = value(fixture.request("POST", "/v1/workflow-runs", Some(&body("healthy-run"))));
+    // Lifecycle assertions require durable admission before the injected stall. Keep
+    // the separate 250 ms deadline probes unchanged; use the existing capacity
+    // fixture budget here rather than assuming admission completes in 250 ms.
+    let mut fixture = Fixture::start_with_budget(false, 2500);
+    let healthy = fixture.request("POST", "/v1/workflow-runs", Some(&body("healthy-run")));
+    assert_eq!(
+        healthy.status,
+        200,
+        "healthy admission failed: body={} diagnostics={}",
+        String::from_utf8_lossy(&healthy.body),
+        fixture.logs()
+    );
+    let healthy = value(healthy);
     let run_id = healthy["workflow_run_id"]
         .as_str()
         .expect("healthy admitted run");
@@ -111,8 +131,14 @@ fn a_read_only_post_stall_is_unavailable_and_backend_replacement_invalidates_oth
     definition["annotations"]["summary"] = json!("owned test stall");
     let body = serde_json::to_vec(&json!({"schema_version":"ascension.management/v1", "definition":definition, "capabilities":{}})).expect("validate body");
     let backend = fixture.process("backend", 0);
+    let started = Instant::now();
     let response = fixture.request("POST", "/v1/workflow-definitions/validate", Some(&body));
     assert_eq!(response.status, 503);
+    assert!(
+        started.elapsed() < Duration::from_secs(6),
+        "2.5 s dispatch plus bounded retirement must finish: {}",
+        fixture.logs()
+    );
     let response = value(response);
     assert_eq!(response["schema_version"], "ascension.management/v1");
     assert_eq!(response["error"]["class"], "unavailable");
