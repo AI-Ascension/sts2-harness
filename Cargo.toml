@@ -25,7 +25,7 @@ serde_json = "=1.0.151"
 sha2 = "=0.11.0"
 hmac = { version = "=0.13.0", features = ["zeroize"] }
 toml = "=1.1.8"
-rusqlite = { version = "=0.40.2", default-features = false, features = ["bundled"] }
+rusqlite = { version = "=0.41.0", default-features = false, features = ["bundled"] }
 rustix = { version = "=1.1.5", features = ["event", "fs", "net", "pipe", "process", "time"] }
 getrandom = "=0.4.3"
 png = "=0.18.1"
