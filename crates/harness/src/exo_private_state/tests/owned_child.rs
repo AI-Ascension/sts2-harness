@@ -263,7 +263,7 @@ fn cleanup_after_capture_error(child: &mut Child, error: io::Error) -> io::Error
     }
 }
 
-fn terminate_and_reap_bounded(child: &mut Child, timeout: Duration) -> io::Result<()> {
+pub(super) fn terminate_and_reap_bounded(child: &mut Child, timeout: Duration) -> io::Result<()> {
     if child.try_wait()?.is_some() {
         return Ok(());
     }
