@@ -184,8 +184,12 @@ fn duplicate_sources_keep_original_retention_and_require_current_readability() -
         corpus.entries().cloned().collect::<Vec<_>>(),
     );
     for (now, readable) in [
+        (NOW, true),
         ("2026-09-15T12:00:00Z", true),
         ("2026-09-14T12:00:00Z", false),
+        ("2026-09-14T23:59:59Z", false),
+        ("2026-09-15T23:59:59Z", true),
+        (EXPIRY, false),
         ("2026-09-17T12:00:00Z", false),
     ] {
         let mut fresh = LookupSession::new(
