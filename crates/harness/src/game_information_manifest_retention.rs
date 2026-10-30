@@ -53,6 +53,9 @@ pub(super) fn retained(
         {
             return Err(LookupError::Scope);
         }
+        if entry.created_at.as_str() > now {
+            return Err(LookupError::MissingRetention);
+        }
         let chunk = corpus
             .read_content(
                 reference,

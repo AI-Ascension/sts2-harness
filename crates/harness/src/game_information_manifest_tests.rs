@@ -174,6 +174,61 @@ fn capacity_and_model_budget_failures_publish_no_partial_source() -> TestResult 
 }
 
 #[test]
+fn duplicate_sources_keep_original_retention_and_require_current_readability() -> TestResult {
+    let (mut original, mut corpus) = manifest_session(8192)?;
+    let raw = serde_json::to_vec(&manifest_value()?)?;
+    let delivery = read(&mut original, &mut corpus, raw.clone())?;
+    let before = (
+        corpus.total_bytes(),
+        corpus.generation(),
+        corpus.entries().cloned().collect::<Vec<_>>(),
+    );
+    for (now, readable) in [
+        (NOW, true),
+        ("2026-09-15T12:00:00Z", true),
+        ("2026-09-14T12:00:00Z", false),
+        ("2026-09-14T23:59:59Z", false),
+        ("2026-09-15T23:59:59Z", true),
+        (EXPIRY, false),
+        ("2026-09-17T12:00:00Z", false),
+    ] {
+        let mut fresh = LookupSession::new(
+            original.binding.clone(),
+            original.policy.clone(),
+            &corpus,
+            now,
+            "2026-09-19T00:00:00Z",
+        )?;
+        negotiate(&mut fresh)?;
+        let result = read(&mut fresh, &mut corpus, raw.clone());
+        if readable {
+            let repeated = result?;
+            assert_eq!(repeated.record.sources, delivery.record.sources);
+            assert_eq!(
+                fresh.replay_content_manifest(&repeated.record, &corpus)?,
+                repeated
+            );
+        } else {
+            assert_eq!(result, Err(LookupError::MissingRetention), "{now}");
+            let failure = &fresh.manifest_records[0];
+            assert_eq!(failure.error, Some(LookupError::MissingRetention));
+            assert!(failure.sources.is_empty());
+            assert!(failure.source_sha256.is_none() && failure.correlation_id.is_none());
+            assert_eq!(failure.source_bytes, 0);
+        }
+        assert_eq!(
+            before,
+            (
+                corpus.total_bytes(),
+                corpus.generation(),
+                corpus.entries().cloned().collect::<Vec<_>>()
+            )
+        );
+    }
+    Ok(())
+}
+
+#[test]
 fn scope_invalidation_and_duplicate_operation_refuse_before_mcp() -> TestResult {
     let (mut session, mut corpus) = manifest_session(8192)?;
     let mut port = ManifestPort {

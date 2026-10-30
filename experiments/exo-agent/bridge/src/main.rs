@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 mod lookup_bootstrap;
+mod lookup_manifest;
 mod lookup_runtime;
 mod lookup_turn;
 mod lookup_wire;
@@ -56,6 +57,9 @@ async fn run() -> Result<(), &'static str> {
     }
     if arguments == ["--lookup-history"] {
         return lookup_turn::run(LookupProfile::History).await;
+    }
+    if arguments == ["--lookup-content-manifest"] {
+        return lookup_turn::run(LookupProfile::ContentManifest).await;
     }
     if !arguments.is_empty() {
         return Err("exo_executor_arguments");
