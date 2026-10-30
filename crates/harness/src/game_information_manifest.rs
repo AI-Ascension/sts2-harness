@@ -91,6 +91,9 @@ impl LookupSession {
                 // Stage all chunks and the model view before publishing any source into this corpus.
                 let (staged, sources) = retention::stage(self, &record, &bytes, corpus)?;
                 record.sources = sources;
+                // Duplicate entries keep their original retention window and metadata. A new
+                // session must authenticate their current readability before delivering success.
+                retention::retained(&record, &staged, &self.now)?;
                 let delivery = self.deliver_manifest(record.clone(), &value)?;
                 *corpus = staged;
                 Ok(delivery)
