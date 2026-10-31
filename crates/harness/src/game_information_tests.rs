@@ -11,6 +11,8 @@ mod bootstrap_conformance_tests;
 mod failure_tests;
 #[path = "game_information_history_tool_tests.rs"]
 mod history_tool_tests;
+#[path = "game_information_manifest_tests.rs"]
+mod manifest_tests;
 #[cfg(unix)]
 #[path = "game_information_process_tests.rs"]
 mod process_tests;

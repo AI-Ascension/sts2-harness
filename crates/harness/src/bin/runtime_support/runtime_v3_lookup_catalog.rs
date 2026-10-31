@@ -12,13 +12,14 @@ const GAMEPLAY: [&str; 6] = [
     "sts2.reobserve",
     "sts2.recover",
 ];
-const LOOKUPS: [&str; 6] = [
+const LOOKUPS: [&str; 7] = [
     "sts2.game_information_capabilities",
     "sts2.game_information_list",
     "sts2.game_information_search",
     "sts2.game_information_get",
     "sts2.game_information_detail",
     "sts2.game_information_availability",
+    "sts2.game_information_content_manifest",
 ];
 const LOOKUP_BINDING: &str = "sts2.game_information_binding";
 const LOOKUP_BOOTSTRAP: &str = "sts2.game_information.live_observation_bootstrap";
@@ -48,7 +49,8 @@ pub(super) fn validate(response: &Value) -> Result<(), String> {
                 .collect::<Vec<_>>()
         );
     }
-    if tools.len() > 14 {
+    // Every admitted name is unique; include binding, bootstrap, capabilities and map.
+    if tools.len() > GAMEPLAY.len() + LOOKUPS.len() + 4 {
         return Err("MCP lookup catalog exceeds supported surface".to_owned());
     }
     let mut names = BTreeSet::new();
@@ -92,6 +94,11 @@ fn validate_lookup(tool: &Value) -> Result<(), String> {
         )
     {
         return Err("MCP lookup descriptor has unsupported authority or revision".to_owned());
+    }
+    if tool["name"] == "sts2.game_information_content_manifest"
+        && meta["feature"] != "static_reference"
+    {
+        return Err("MCP manifest descriptor has unsupported capability scope".to_owned());
     }
     Ok(())
 }
@@ -158,6 +165,54 @@ mod tests {
         assert!(validate(&invalid).is_err());
         let mut invalid = valid;
         invalid["result"]["tools"][7]["name"] = json!("sts2.profile_read");
+        assert!(validate(&invalid).is_err());
+    }
+
+    #[test]
+    fn complete_manifest_composition_keeps_every_other_admitted_tool() {
+        let mut valid = catalog();
+        let descriptor = valid["result"]["tools"][7].clone();
+        let mut tools = GAMEPLAY
+            .iter()
+            .map(|name| json!({"name":name}))
+            .collect::<Vec<_>>();
+        for name in LOOKUPS {
+            let mut tool = descriptor.clone();
+            tool["name"] = json!(name);
+            tools.push(tool);
+        }
+        for (name, revision, feature) in [
+            (
+                LOOKUP_BINDING,
+                "game-information-lookup-binding-v1-mcp",
+                "static_reference",
+            ),
+            (
+                LOOKUP_BOOTSTRAP,
+                "game-information-live-observation-bootstrap-v1",
+                "live_details",
+            ),
+        ] {
+            let mut tool = descriptor.clone();
+            tool["name"] = json!(name);
+            tool["_meta"]["sts2"] = json!({"revision":revision,"feature":feature});
+            tools.push(tool);
+        }
+        tools.extend([
+            json!({"name":"sts2.capabilities"}),
+            json!({"name":"sts2.map_snapshot"}),
+        ]);
+        assert_eq!(tools.len(), 17);
+        valid["result"]["tools"] = json!(tools);
+        assert!(validate(&valid).is_ok());
+        let mut invalid = valid.clone();
+        invalid["result"]["tools"][12]["_meta"]["sts2"]["feature"] = json!("live_details");
+        assert!(validate(&invalid).is_err());
+        let mut invalid = valid.clone();
+        invalid["result"]["tools"][12]["annotations"]["destructiveHint"] = json!(true);
+        assert!(validate(&invalid).is_err());
+        let mut invalid = valid;
+        invalid["result"]["tools"][12] = invalid["result"]["tools"][11].clone();
         assert!(validate(&invalid).is_err());
     }
 }

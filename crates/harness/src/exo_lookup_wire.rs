@@ -17,6 +17,8 @@ pub const EXO_LOOKUP_BOOTSTRAP_WIRE: &str = "sts2.exo-lookup-wire-v2-bootstrap";
 /// Additive frame pin for the history-capable provider bridge. Both closed
 /// profiles above remain byte-for-byte compatible.
 pub const EXO_LOOKUP_HISTORY_WIRE: &str = "sts2.exo-lookup-wire-v3-history";
+/// Explicit manifest-capable profile; no new turn is accepted under the closed older pins.
+pub const EXO_LOOKUP_MANIFEST_WIRE: &str = "sts2.exo-lookup-wire-v4-content-manifest";
 pub const EXO_LOOKUP_FRAME_BYTES: usize = 196_608;
 pub const EXO_LOOKUP_TOOL_BYTES: usize = 16_384;
 pub const EXO_LOOKUP_FEEDBACK_BYTES: usize = 7_000;
@@ -49,6 +51,13 @@ pub enum ExoLookupPayload {
     History {
         arguments: Value,
     },
+    ContentManifest {
+        operation_id: String,
+    },
+    ReadManifest {
+        record_ordinal: usize,
+        offset: usize,
+    },
     ReadRetained {
         record_ordinal: usize,
         offset: usize,
@@ -73,7 +82,10 @@ impl ExoLookupFrame {
         let frame: Self = serde_json::from_value(value).map_err(|_| LookupError::Invalid)?;
         if !matches!(
             frame.wire_version.as_str(),
-            EXO_LOOKUP_WIRE | EXO_LOOKUP_BOOTSTRAP_WIRE | EXO_LOOKUP_HISTORY_WIRE
+            EXO_LOOKUP_WIRE
+                | EXO_LOOKUP_BOOTSTRAP_WIRE
+                | EXO_LOOKUP_HISTORY_WIRE
+                | EXO_LOOKUP_MANIFEST_WIRE
         ) || frame.sequence > 33
             || !valid_id(&frame.request_id)
             || !valid_id(&frame.turn_id)
@@ -89,6 +101,13 @@ impl ExoLookupFrame {
         // selected another profile cannot ask one by relabelling a frame it already holds.
         if matches!(frame.payload, ExoLookupPayload::History { .. })
             && frame.wire_version != EXO_LOOKUP_HISTORY_WIRE
+        {
+            return Err(LookupError::Invalid);
+        }
+        if matches!(
+            frame.payload,
+            ExoLookupPayload::ContentManifest { .. } | ExoLookupPayload::ReadManifest { .. }
+        ) && frame.wire_version != EXO_LOOKUP_MANIFEST_WIRE
         {
             return Err(LookupError::Invalid);
         }
