@@ -210,7 +210,10 @@ fn successful_record_read_rechecks_policy_and_sources_after_the_manifest_turn() 
             "expired_source" => {
                 for reference in &record.sources {
                     assert_eq!(
-                        retained.entry(reference).ok_or("fixture source")?.expires_at,
+                        retained
+                            .entry(reference)
+                            .ok_or("fixture source")?
+                            .expires_at,
                         EXPIRY
                     );
                 }
