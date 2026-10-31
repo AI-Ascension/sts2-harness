@@ -152,3 +152,76 @@ fn authenticated_successful_read_bounds_reproduce_live_tool_feedback() -> TestRe
     assert_eq!(replay.feedback, live.feedback);
     Ok(())
 }
+
+fn assert_manifest_read_diverges(
+    session: &mut LookupSession,
+    corpus: &MemoryCorpus,
+    offset: usize,
+    mutation: &str,
+) -> TestResult {
+    let mut replay = agent(offset);
+    // The manifest turn was already authenticated before mutation.
+    let _ = replay.turns.pop_front();
+    assert_eq!(
+        run_lookup_replay_tool_loop(session, corpus, &mut replay, &legal()?, 2),
+        Err(LookupError::Divergence),
+        "{mutation}, offset {offset}"
+    );
+    assert_eq!(replay.feedback, vec![LookupFeedback::Start], "{mutation}");
+    assert_eq!(session.manifest_replay_cursor, 1, "{mutation}");
+    assert_eq!(replay.turns.len(), 1, "the decision must not be consumed");
+    Ok(())
+}
+
+#[test]
+fn successful_record_read_rechecks_policy_and_sources_after_the_manifest_turn() -> TestResult {
+    let (mut session, mut corpus) = manifest_session(8192)?;
+    let raw = serde_json::to_vec(&manifest_value()?)?;
+    let delivery = read(&mut session, &mut corpus, raw.clone())?;
+    assert!(delivery.record.error.is_none());
+    assert!(!delivery.record.sources.is_empty());
+    let mut store = DurableMemoryStore::open(":memory:", session.binding.scope.clone(), [46; 32])?;
+    let archive = session.export_archive(&corpus, &mut store)?;
+    for mutation in ["revoked_policy", "revoked_source", "expired_source"] {
+        let (mut restored, mut retained) = restore(&session, &archive, &store, NOW)?;
+        let mut manifest = failure_agent();
+        assert_eq!(
+            run_lookup_replay_tool_loop(&mut restored, &retained, &mut manifest, &legal()?, 2)?,
+            "play:card-17"
+        );
+        assert_eq!(
+            manifest.feedback,
+            vec![
+                LookupFeedback::Start,
+                LookupFeedback::ContentManifest {
+                    record_ordinal: 0,
+                    delivery: Box::new(delivery.clone()),
+                },
+            ]
+        );
+        assert_eq!(restored.manifest_replay_cursor, 1);
+        let record = &restored.manifest_records()[0];
+        assert_eq!(restored.read_retained_manifest(record, &retained, 0)?, raw);
+        match mutation {
+            "revoked_policy" => restored.policy.status = PolicyStatus::Revoked,
+            "revoked_source" => {
+                retained.revoke(&record.sources, NOW)?;
+            }
+            "expired_source" => {
+                for reference in &record.sources {
+                    assert_eq!(
+                        retained.entry(reference).ok_or("fixture source")?.expires_at,
+                        EXPIRY
+                    );
+                }
+                restored.now = EXPIRY.into();
+            }
+            _ => return Err("fixture".into()),
+        }
+        // Authentication failure must not become either bytes or ordinary bounds feedback.
+        for offset in [0, raw.len() + 1] {
+            assert_manifest_read_diverges(&mut restored, &retained, offset, mutation)?;
+        }
+    }
+    Ok(())
+}

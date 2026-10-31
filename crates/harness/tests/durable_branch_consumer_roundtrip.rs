@@ -13,6 +13,7 @@
 #![allow(clippy::expect_used)]
 
 use std::fs;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -307,7 +308,7 @@ fn production_consumer_round_trips_both_strategy_descriptors() -> Result<(), Str
     Ok(())
 }
 
-fn runtime_command(store_path: &Path, execution_store: &Path) -> Command {
+fn runtime_command(store_path: &Path, execution_store: &Path, inert_binary: &Path) -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_sts2-harness-runtime"));
     command
         .env_clear()
@@ -316,7 +317,7 @@ fn runtime_command(store_path: &Path, execution_store: &Path) -> Command {
         .env("STS2_RUNTIME_PROFILE", "runtime-v3-gameplay")
         .env("STS2_GATEWAY_ADDR", "127.0.0.1:1")
         .env("STS2_GATEWAY_TOKEN", "test-token")
-        .env("STS2_MCP_BINARY", "/bin/true")
+        .env("STS2_MCP_BINARY", inert_binary)
         .env("STS2_INSTANCE_ID", "instance-durable-branch-consumer")
         .env("STS2_CALLER_ID", "caller-durable-branch-consumer")
         .env("STS2_SESSION_ID", "session-durable-branch-consumer")
@@ -336,7 +337,7 @@ fn runtime_command(store_path: &Path, execution_store: &Path) -> Command {
         .env("STS2_STATE_DIGEST", "state-durable-branch-consumer")
         .env("STS2_EXO_REVISION", EXO_SOURCE_REVISION)
         .env("STS2_EXO_ADMISSION", "legacy")
-        .env("STS2_EXO_BRIDGE_BINARY", "/bin/true")
+        .env("STS2_EXO_BRIDGE_BINARY", inert_binary)
         .env("STS2_EXO_FORWARD_VISIBLE_SEED", "true")
         .env("STS2_OBJECTIVE", "complete the round trip");
     command
@@ -353,8 +354,16 @@ fn production_runtime_process_reconciles_seeded_strategy_descriptors() -> Result
         return Err(String::from("the episode store must not pre-exist"));
     }
 
+    // Use an owned regular fixture, not a host utility that may become a symlink.
+    // The peer fixture is inert if a later startup change invokes it.
+    let inert_binary = root.join("inert-runtime-peer");
+    fs::write(&inert_binary, b"#!/bin/sh\nexit 0\n")
+        .map_err(|error| format!("cannot write inert runtime peer: {error}"))?;
+    fs::set_permissions(&inert_binary, fs::Permissions::from_mode(0o700))
+        .map_err(|error| format!("cannot make inert runtime peer executable: {error}"))?;
+
     let output = run_child_with_timeout(
-        runtime_command(&store_path, &execution_store),
+        runtime_command(&store_path, &execution_store, &inert_binary),
         CHILD_TIMEOUT,
     )?;
     let stderr = String::from_utf8_lossy(&output.stderr);
