@@ -345,7 +345,9 @@ fn not_observable_bootstrap_error_is_missing_capability_and_never_reaches_the_ag
                 LookupFeedback::Bootstrap { .. }
                 | LookupFeedback::Data { .. }
                 | LookupFeedback::Bytes { .. }
-                | LookupFeedback::History { .. } => Err(LookupError::Divergence),
+                | LookupFeedback::History { .. }
+                | LookupFeedback::ContentManifest { .. }
+                | LookupFeedback::ManifestBytes { .. } => Err(LookupError::Divergence),
             }
         }
     }

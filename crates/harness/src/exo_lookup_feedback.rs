@@ -56,39 +56,45 @@ pub(crate) fn feedback_value(
             operation_id,
             answer,
         } => json!({"operation_id":operation_id,"history":answer}),
+        LookupFeedback::ContentManifest {
+            record_ordinal,
+            delivery,
+        } => {
+            let full =
+                json!({"manifest_record_ordinal":record_ordinal,"content_manifest":delivery.data});
+            if serde_json::to_vec(&full)
+                .map_err(|_| LookupError::Invalid)?
+                .len()
+                <= maximum
+            {
+                full
+            } else {
+                json!({"manifest_record_ordinal":record_ordinal,"content_manifest":{
+                    "authority":"untrusted_game_information_data","delivery":"retained",
+                    "protocol_version":crate::game_information::manifest::PROFILE,
+                    "schema_digest":crate::game_information::manifest::SCHEMA_DIGEST,
+                    "byte_length":delivery.record.source_bytes,"source_sha256":delivery.record.source_sha256}})
+            }
+        }
+        LookupFeedback::ManifestBytes {
+            record_ordinal,
+            offset,
+            total_bytes,
+            bytes,
+        } => chunk_value(*record_ordinal, *offset, *total_bytes, bytes, maximum, true)?,
         LookupFeedback::Bytes {
             record_ordinal,
             offset,
             total_bytes,
             bytes,
-        } => {
-            if *record_ordinal >= 256
-                || *total_bytes > 65_536
-                || offset > total_bytes
-                || bytes.len() > total_bytes - offset
-            {
-                return Err(LookupError::Bounds);
-            }
-            let mut count = bytes.len().min(EXO_LOOKUP_CHUNK_BYTES);
-            loop {
-                let next = offset.checked_add(count).ok_or(LookupError::Bounds)?;
-                let value = json!({"record_ordinal":record_ordinal,"offset":offset,"next_offset":next,
-                    "total_bytes":total_bytes,"encoding":"hex","bytes":crate::hex_bytes(&bytes[..count]),
-                    "authority":"untrusted_game_information_data"});
-                let size = serde_json::to_vec(&value)
-                    .map_err(|_| LookupError::Invalid)?
-                    .len();
-                if size <= maximum {
-                    if count == 0 && !bytes.is_empty() {
-                        return Err(LookupError::Bounds);
-                    }
-                    break value;
-                }
-                count = count
-                    .checked_sub((size - maximum).div_ceil(2))
-                    .ok_or(LookupError::Bounds)?;
-            }
-        }
+        } => chunk_value(
+            *record_ordinal,
+            *offset,
+            *total_bytes,
+            bytes,
+            maximum,
+            false,
+        )?,
         LookupFeedback::Error(error) => json!({"error":error}),
         LookupFeedback::Start => return Err(LookupError::Invalid),
     };
@@ -100,4 +106,49 @@ pub(crate) fn feedback_value(
         return Err(LookupError::Bounds);
     }
     Ok(value)
+}
+
+fn chunk_value(
+    ordinal: usize,
+    offset: usize,
+    total: usize,
+    bytes: &[u8],
+    maximum: usize,
+    manifest: bool,
+) -> Result<Value, LookupError> {
+    let (record_limit, byte_limit, key) = if manifest {
+        (
+            crate::game_information::manifest::MAX_RECORDS,
+            crate::game_information::manifest::MAX_RESPONSE_BYTES,
+            "manifest_record_ordinal",
+        )
+    } else {
+        (256, 65_536, "record_ordinal")
+    };
+    if ordinal >= record_limit
+        || total > byte_limit
+        || offset > total
+        || bytes.len() > total - offset
+    {
+        return Err(LookupError::Bounds);
+    }
+    let mut count = bytes.len().min(EXO_LOOKUP_CHUNK_BYTES);
+    loop {
+        let next = offset.checked_add(count).ok_or(LookupError::Bounds)?;
+        let value = json!({key:ordinal,"offset":offset,"next_offset":next,"total_bytes":total,
+            "encoding":"hex","bytes":crate::hex_bytes(&bytes[..count]),
+            "authority":"untrusted_game_information_data"});
+        let size = serde_json::to_vec(&value)
+            .map_err(|_| LookupError::Invalid)?
+            .len();
+        if size <= maximum {
+            if count == 0 && !bytes.is_empty() {
+                return Err(LookupError::Bounds);
+            }
+            return Ok(value);
+        }
+        count = count
+            .checked_sub((size - maximum).div_ceil(2))
+            .ok_or(LookupError::Bounds)?;
+    }
 }

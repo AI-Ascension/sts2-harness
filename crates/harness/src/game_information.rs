@@ -10,13 +10,17 @@ use std::collections::BTreeMap;
 
 #[path = "game_information_admission.rs"]
 mod admission;
+#[path = "game_information_manifest.rs"]
+pub mod manifest;
+#[path = "game_information_manifest_archive.rs"]
+mod manifest_archive;
 #[path = "game_information_mcp.rs"]
 mod mcp;
 #[path = "game_information_records.rs"]
 mod records;
 pub use mcp::{
-    LookupMcpContext, LookupMcpPort, call_capabilities_mcp, call_live_observation_bootstrap_mcp,
-    call_lookup_mcp,
+    LookupMcpContext, LookupMcpPort, call_capabilities_mcp, call_content_manifest_mcp,
+    call_live_observation_bootstrap_mcp, call_lookup_mcp, content_manifest_response_mcp,
 };
 #[path = "game_information_agent.rs"]
 mod agent;
@@ -137,6 +141,9 @@ pub struct LookupSession {
     capabilities: Option<Value>,
     records: Vec<LookupRecord>,
     bootstrap_records: Vec<LookupBootstrapRecord>,
+    manifest_records: Vec<manifest::ContentManifestRecord>,
+    /// Imported failure references keep their original retention window on a later export.
+    manifest_imported_failures: BTreeMap<String, MemoryRef>,
     pages: BTreeMap<String, (Value, Value, usize)>,
     /// The durable history this owner attached for this session's scope, if any.
     ///
@@ -145,6 +152,7 @@ pub struct LookupSession {
     history: Option<crate::semantic_history::SemanticHistoryStore>,
     replay_cursor: usize,
     bootstrap_replay_cursor: usize,
+    manifest_replay_cursor: usize,
     now: String,
     expires_at: String,
 }
@@ -173,10 +181,13 @@ impl LookupSession {
             capabilities: None,
             records: Vec::new(),
             bootstrap_records: Vec::new(),
+            manifest_records: Vec::new(),
+            manifest_imported_failures: BTreeMap::new(),
             pages: BTreeMap::new(),
             history: None,
             replay_cursor: 0,
             bootstrap_replay_cursor: 0,
+            manifest_replay_cursor: 0,
             now: now.to_owned(),
             expires_at: expires_at.to_owned(),
         })

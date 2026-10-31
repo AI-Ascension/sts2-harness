@@ -201,13 +201,7 @@ pub(super) fn validate_events(
             } => {
                 if ended
                     || request.namespace.is_some()
-                    || !matches!(
-                        request.function_name.as_str(),
-                        "sts2_lookup_query"
-                            | "sts2_lookup_bootstrap"
-                            | "sts2_lookup_history"
-                            | "sts2_lookup_read"
-                    )
+                    || !wire::owned_tool_name(&request.function_name)
                     || serde_json::to_vec(&request.arguments)
                         .map_err(|_| "exo_lookup_event")?
                         .len()
