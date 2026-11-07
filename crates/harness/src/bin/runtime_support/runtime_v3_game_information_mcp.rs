@@ -84,4 +84,8 @@ impl LookupMcpPort for RuntimeV3Port {
     ) -> Result<Vec<u8>, LookupError> {
         live_bootstrap(self, request)
     }
+
+    fn information_content_manifest(&mut self) -> Result<(String, Vec<u8>), LookupError> {
+        content_manifest(self)
+    }
 }

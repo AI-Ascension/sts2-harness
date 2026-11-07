@@ -27,7 +27,7 @@ pub(super) fn persist(
     session: &LookupSession,
     corpus: &MemoryCorpus,
 ) -> Result<Option<(String, usize)>, String> {
-    if session.records().is_empty() {
+    if session.records().is_empty() && session.manifest_records().is_empty() {
         return Ok(None);
     }
     let authority = owner

@@ -17,6 +17,7 @@ pub(super) struct LookupAgentDecisionSource {
     timeout: Duration,
     bootstrap_profile: bool,
     history_profile: bool,
+    manifest_profile: bool,
     execution_id: Option<ModelExecutionId>,
 }
 
@@ -27,6 +28,7 @@ impl LookupAgentDecisionSource {
         timeout: Duration,
         bootstrap_profile: bool,
         history_profile: bool,
+        manifest_profile: bool,
     ) -> Self {
         Self {
             process,
@@ -34,6 +36,7 @@ impl LookupAgentDecisionSource {
             timeout,
             bootstrap_profile,
             history_profile,
+            manifest_profile,
             execution_id: None,
         }
     }
@@ -87,12 +90,24 @@ impl DecisionSource for LookupAgentDecisionSource {
         });
         // The history profile is additive over the bootstrap one, so selecting it keeps the
         // shipped capability rather than trading it away.
-        let profile = match (self.history_profile, self.bootstrap_profile) {
-            (true, _) => ExoLookupProfile::History,
-            (false, true) => ExoLookupProfile::Bootstrap,
-            (false, false) => ExoLookupProfile::Terminal,
+        let profile = match (
+            self.manifest_profile,
+            self.history_profile,
+            self.bootstrap_profile,
+        ) {
+            (true, _, _) => ExoLookupProfile::ContentManifest,
+            (false, true, _) => ExoLookupProfile::History,
+            (false, false, true) => ExoLookupProfile::Bootstrap,
+            (false, false, false) => ExoLookupProfile::Terminal,
         };
         let mut agent = match profile {
+            ExoLookupProfile::ContentManifest => ExoLookupProcess::new_content_manifest(
+                self.process.clone(),
+                request_id,
+                turn_id,
+                request,
+                self.timeout,
+            ),
             ExoLookupProfile::Terminal => ExoLookupProcess::new(
                 self.process.clone(),
                 request_id,

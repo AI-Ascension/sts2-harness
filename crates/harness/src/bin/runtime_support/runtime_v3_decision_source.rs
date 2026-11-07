@@ -20,6 +20,7 @@ fn decision_source(
                 lookup_agent.timeout,
                 lookup_agent.bootstrap_profile,
                 lookup_agent.history_profile,
+                lookup_agent.manifest_profile,
             ),
         ))
     } else {

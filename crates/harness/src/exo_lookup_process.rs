@@ -6,8 +6,8 @@ use std::time::{Duration, Instant};
 
 use crate::ExoProcessConfig;
 use crate::exo_lookup_wire::{
-    EXO_LOOKUP_BOOTSTRAP_WIRE, EXO_LOOKUP_HISTORY_WIRE, EXO_LOOKUP_WIRE, ExoLookupFrame,
-    ExoLookupPayload,
+    EXO_LOOKUP_BOOTSTRAP_WIRE, EXO_LOOKUP_HISTORY_WIRE, EXO_LOOKUP_MANIFEST_WIRE, EXO_LOOKUP_WIRE,
+    ExoLookupFrame, ExoLookupPayload,
 };
 use crate::game_information::{
     LookupAgentInput, LookupAgentPort, LookupError, LookupFeedback, LookupTurn,
@@ -32,6 +32,8 @@ pub enum ExoLookupProfile {
     Bootstrap,
     /// The additive history-capable relay.
     History,
+    /// Complete content manifests plus all preceding read-only lookup tools.
+    ContentManifest,
 }
 
 impl ExoLookupProfile {
@@ -42,7 +44,33 @@ impl ExoLookupProfile {
             Self::Terminal => EXO_LOOKUP_WIRE,
             Self::Bootstrap => EXO_LOOKUP_BOOTSTRAP_WIRE,
             Self::History => EXO_LOOKUP_HISTORY_WIRE,
+            Self::ContentManifest => EXO_LOOKUP_MANIFEST_WIRE,
         }
+    }
+
+    /// Validate one provider turn against its selected profile and that turn's exact wire pin.
+    #[must_use]
+    pub fn permits_frame(self, frame: &ExoLookupFrame) -> bool {
+        let expected = match &frame.payload {
+            ExoLookupPayload::Query { .. }
+            | ExoLookupPayload::ReadRetained { .. }
+            | ExoLookupPayload::Decision { .. } => Some(EXO_LOOKUP_WIRE),
+            ExoLookupPayload::Bootstrap { .. } if self != Self::Terminal => {
+                Some(EXO_LOOKUP_BOOTSTRAP_WIRE)
+            }
+            ExoLookupPayload::History { .. }
+                if matches!(self, Self::History | Self::ContentManifest) =>
+            {
+                Some(EXO_LOOKUP_HISTORY_WIRE)
+            }
+            ExoLookupPayload::ContentManifest { .. } | ExoLookupPayload::ReadManifest { .. }
+                if self == Self::ContentManifest =>
+            {
+                Some(EXO_LOOKUP_MANIFEST_WIRE)
+            }
+            _ => None,
+        };
+        expected == Some(frame.wire_version.as_str())
     }
 }
 
@@ -60,7 +88,7 @@ pub struct ExoLookupProcess {
     binding: Option<crate::game_information::LookupBinding>,
     byte_budget: Option<usize>,
     profile: ExoLookupProfile,
-    feedback_pending: bool,
+    feedback_wire: Option<&'static str>,
 }
 
 impl ExoLookupProcess {
@@ -114,6 +142,24 @@ impl ExoLookupProcess {
             request,
             timeout,
             ExoLookupProfile::History,
+        )
+    }
+
+    /// Explicit complete-manifest profile, including the preceding read-only lookup surfaces.
+    pub fn new_content_manifest(
+        config: ExoProcessConfig,
+        request_id: String,
+        turn_id: String,
+        request: serde_json::Value,
+        timeout: Duration,
+    ) -> Result<Self, LookupError> {
+        Self::new_mode(
+            config,
+            request_id,
+            turn_id,
+            request,
+            timeout,
+            ExoLookupProfile::ContentManifest,
         )
     }
 
@@ -178,7 +224,7 @@ impl ExoLookupProcess {
             binding: None,
             byte_budget: None,
             profile,
-            feedback_pending: false,
+            feedback_wire: None,
         })
     }
 
@@ -186,14 +232,13 @@ impl ExoLookupProcess {
         if self.closed {
             return Err(LookupError::Invalid);
         }
-        // A turn adds its own pin; feedback for that turn stays on the pin it answered on, so a
-        // provider cannot read an answer under a profile it did not select.
+        // Echo the exact admitted incoming turn's pin, including bootstrap inside a newer profile.
         let wire = match &payload {
-            ExoLookupPayload::Bootstrap { .. } => EXO_LOOKUP_BOOTSTRAP_WIRE,
-            ExoLookupPayload::History { .. } => EXO_LOOKUP_HISTORY_WIRE,
             ExoLookupPayload::Start { .. } => self.profile.wire(),
-            ExoLookupPayload::Feedback { .. } if self.feedback_pending => self.profile.wire(),
-            _ => EXO_LOOKUP_WIRE,
+            ExoLookupPayload::Feedback { .. } => {
+                self.feedback_wire.take().ok_or(LookupError::Invalid)?
+            }
+            _ => return Err(LookupError::Invalid),
         };
         let frame = ExoLookupFrame {
             wire_version: wire.into(),
@@ -202,16 +247,6 @@ impl ExoLookupProcess {
             sequence: self.sequence,
             payload,
         };
-        if matches!(
-            frame.payload,
-            ExoLookupPayload::Bootstrap { .. } | ExoLookupPayload::History { .. }
-        ) {
-            self.feedback_pending = true;
-        } else if self.feedback_pending
-            && matches!(frame.payload, ExoLookupPayload::Feedback { .. })
-        {
-            self.feedback_pending = false;
-        }
         self.sender
             .as_ref()
             .ok_or(LookupError::Transport)?
@@ -221,6 +256,21 @@ impl ExoLookupProcess {
         let response = ExoLookupFrame::parse(&bytes)?;
         self.sequence += 1;
         response.assert_identity(&self.request_id, &self.turn_id, self.sequence)?;
+        if !self.profile.permits_frame(&response) {
+            return Err(LookupError::Invalid);
+        }
+        let wire = match &response.payload {
+            ExoLookupPayload::Bootstrap { .. } => EXO_LOOKUP_BOOTSTRAP_WIRE,
+            ExoLookupPayload::History { .. } => EXO_LOOKUP_HISTORY_WIRE,
+            ExoLookupPayload::ContentManifest { .. } | ExoLookupPayload::ReadManifest { .. } => {
+                EXO_LOOKUP_MANIFEST_WIRE
+            }
+            _ => EXO_LOOKUP_WIRE,
+        };
+        if response.wire_version != wire {
+            return Err(LookupError::Invalid);
+        }
+        self.feedback_wire = Some(wire);
         Ok(response.payload)
     }
 }

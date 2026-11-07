@@ -5,10 +5,7 @@ use super::{Loaded, read_line};
 use serde_json::json;
 use sts2_harness::ExoDecisionRequest;
 use sts2_harness::exo_lookup_process::ExoLookupProfile;
-use sts2_harness::exo_lookup_wire::{
-    EXO_LOOKUP_BOOTSTRAP_WIRE, EXO_LOOKUP_FEEDBACK_BYTES, EXO_LOOKUP_HISTORY_WIRE, EXO_LOOKUP_WIRE,
-    ExoLookupFrame, ExoLookupPayload,
-};
+use sts2_harness::exo_lookup_wire::{EXO_LOOKUP_FEEDBACK_BYTES, ExoLookupFrame, ExoLookupPayload};
 use sts2_harness::exo_private_state::{BridgeChildScope, ExecutorPrivateState, GuardedRun};
 use tokio::io::AsyncWriteExt;
 use tokio::process::Child;
@@ -56,8 +53,14 @@ pub(super) async fn relay(
     if profile != ExoLookupProfile::Terminal {
         command.env("STS2_EXO_LOOKUP_BOOTSTRAP", "1");
     }
-    if profile == ExoLookupProfile::History {
+    if matches!(
+        profile,
+        ExoLookupProfile::History | ExoLookupProfile::ContentManifest
+    ) {
         command.env("STS2_EXO_LOOKUP_HISTORY", "1");
+    }
+    if profile == ExoLookupProfile::ContentManifest {
+        command.env("STS2_EXO_LOOKUP_CONTENT_MANIFEST", "1");
     }
     let child_scope = BridgeChildScope::enable()?;
     guarded.begin_spawn()?;
@@ -65,6 +68,7 @@ pub(super) async fn relay(
         ExoLookupProfile::Terminal => "--lookup",
         ExoLookupProfile::Bootstrap => "--lookup-bootstrap",
         ExoLookupProfile::History => "--lookup-history",
+        ExoLookupProfile::ContentManifest => "--lookup-content-manifest",
     });
     let mut child = match command.spawn() {
         Ok(child) => child,
@@ -201,21 +205,7 @@ async fn drive_child(
             frame
                 .assert_identity(&start.request_id, &start.turn_id, sequence)
                 .map_err(|_| "exo_bridge_lookup_identity")?;
-            let bootstrap = matches!(frame.payload, ExoLookupPayload::Bootstrap { .. });
-            let history = matches!(frame.payload, ExoLookupPayload::History { .. });
-            if bootstrap
-                && (profile == ExoLookupProfile::Terminal
-                    || frame.wire_version != EXO_LOOKUP_BOOTSTRAP_WIRE)
-            {
-                return Err("exo_bridge_lookup_profile");
-            }
-            if history
-                && (profile != ExoLookupProfile::History
-                    || frame.wire_version != EXO_LOOKUP_HISTORY_WIRE)
-            {
-                return Err("exo_bridge_lookup_profile");
-            }
-            if !bootstrap && !history && frame.wire_version != EXO_LOOKUP_WIRE {
+            if !profile.permits_frame(&frame) {
                 return Err("exo_bridge_lookup_profile");
             }
             let is_terminal = match &frame.payload {
@@ -227,6 +217,8 @@ async fn drive_child(
                 ExoLookupPayload::Query { .. }
                 | ExoLookupPayload::Bootstrap { .. }
                 | ExoLookupPayload::History { .. }
+                | ExoLookupPayload::ContentManifest { .. }
+                | ExoLookupPayload::ReadManifest { .. }
                 | ExoLookupPayload::ReadRetained { .. }
                     if sequence <= 32 =>
                 {
@@ -258,10 +250,7 @@ async fn drive_child(
             feedback
                 .assert_identity(&start.request_id, &start.turn_id, sequence)
                 .map_err(|_| "exo_bridge_lookup_identity")?;
-            if bootstrap && feedback.wire_version != EXO_LOOKUP_BOOTSTRAP_WIRE {
-                return Err("exo_bridge_lookup_profile");
-            }
-            if history && feedback.wire_version != EXO_LOOKUP_HISTORY_WIRE {
+            if feedback.wire_version != frame.wire_version {
                 return Err("exo_bridge_lookup_profile");
             }
             let ExoLookupPayload::Feedback { value } = &feedback.payload else {

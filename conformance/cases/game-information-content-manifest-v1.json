@@ -1,0 +1,41 @@
+{
+  "contract": "sts2.protocol/game-information-content-manifest-v1",
+  "profile": "game-information-content-manifest-v1",
+  "schema_digest": "416a39769445e6e462c5d5b5504f29010c255e2116a73094e55c7268e47f2ba6",
+  "max_message_bytes": 16777216,
+  "error_mapping": {
+    "ContentSourceError::Unavailable": {
+      "code": "missing_capability",
+      "reason": "source_unavailable"
+    },
+    "ContentSourceError::AccessDenied": {
+      "code": "access_denied",
+      "reason": "source_access_denied"
+    },
+    "ContentSourceError::Malformed": {
+      "code": "malformed",
+      "reason": "source_malformed"
+    },
+    "ContentManifestError::CatalogChanged": {
+      "code": "malformed",
+      "reason": "catalog_changed"
+    },
+    "oversized_serialized_envelope": {
+      "code": "result_limit_exceeded",
+      "reason": "serialized_payload_too_large"
+    }
+  },
+  "valid_vectors": [
+    "../../conformance/fixtures/game-information-content-manifest-v1/valid/canonical-manifest-response.json",
+    "../../conformance/fixtures/game-information-content-manifest-v1/valid/access-denied-error-response.json"
+  ],
+  "invalid_vectors": [
+    "../../conformance/fixtures/game-information-content-manifest-v1/invalid/success-with-null-manifest.json",
+    "../../conformance/fixtures/game-information-content-manifest-v1/invalid/error-with-null-payload.json",
+    "../../conformance/fixtures/game-information-content-manifest-v1/invalid/raw-error-reason.json",
+    "../../conformance/fixtures/game-information-content-manifest-v1/invalid/mismatched-error-code-reason.json",
+    "../../conformance/fixtures/game-information-content-manifest-v1/invalid/unsupported-schema-digest.json",
+    "../../conformance/fixtures/game-information-content-manifest-v1/invalid/unknown-member.json"
+  ],
+  "producer_integration": "pending in sts2-game-mod; consumers must use the protocol codec and map owner errors as specified"
+}

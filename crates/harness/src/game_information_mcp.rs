@@ -7,6 +7,9 @@ mod arguments;
 #[path = "game_information_mcp_bootstrap.rs"]
 mod bootstrap;
 pub use bootstrap::call_live_observation_bootstrap_mcp;
+#[path = "game_information_mcp_manifest.rs"]
+mod manifest;
+pub use manifest::{call_content_manifest_mcp, content_manifest_response_mcp};
 
 /// Existing MCP port adapter implemented by the runtime owner, never by game text.
 pub trait LookupMcpPort {
@@ -16,6 +19,11 @@ pub trait LookupMcpPort {
         Err(LookupError::MissingCapability)
     }
     fn call_information(&mut self, tool: &str, request: &Value) -> Result<Vec<u8>, LookupError>;
+    /// Fixed bodyless read, with correlation allocated by the existing MCP owner.
+    /// The safe default keeps older ports unavailable for this additive capability.
+    fn information_content_manifest(&mut self) -> Result<(String, Vec<u8>), LookupError> {
+        Err(LookupError::MissingCapability)
+    }
     /// Additive live-observation bootstrap. Existing MCP-only test ports keep
     /// the safe default and therefore retain static/live-unavailable behavior.
     fn call_live_observation_bootstrap(

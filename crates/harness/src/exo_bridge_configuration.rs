@@ -112,6 +112,8 @@ pub fn load(path: &str) -> Result<Loaded, &'static str> {
     load_profile(path, false)
 }
 
+#[path = "exo_bridge_configuration/manifest_profile.rs"]
+mod manifest_profile;
 #[path = "exo_bridge_configuration/profile.rs"]
 mod profile;
 

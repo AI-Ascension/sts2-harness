@@ -290,6 +290,13 @@ fn one_turn(
         ExoLookupProfile::History => {
             ExoLookupProcess::new_history(config, request_id, turn_id, decision_request(), timeout)
         }
+        ExoLookupProfile::ContentManifest => ExoLookupProcess::new_content_manifest(
+            config,
+            request_id,
+            turn_id,
+            decision_request(),
+            timeout,
+        ),
     }
     .map_err(|_| "exo_lookup_process")?;
     Ok(process.next_turn(LookupAgentInput {

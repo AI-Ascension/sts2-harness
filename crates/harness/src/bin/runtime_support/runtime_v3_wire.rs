@@ -37,7 +37,8 @@ pub(super) use bounded_rpc::{
     has_catalog_reobserve, is_transient_gateway_rpc_error, is_transient_gateway_tool_error,
 };
 pub(super) use bounded_rpc::{
-    rpc_call, rpc_call_catalog_read, rpc_call_recovery_read, rpc_call_with_deadline,
+    rpc_call, rpc_call_catalog_read, rpc_call_manifest_read, rpc_call_recovery_read,
+    rpc_call_with_deadline,
 };
 
 pub(super) fn initialize_mcp_profile(mcp: &mut McpProcess, profile: &str) -> Result<(), String> {
@@ -86,7 +87,7 @@ include!("runtime_v3_wire_validation.rs");
 #[path = "runtime_v3_lookup_catalog.rs"]
 mod lookup_catalog;
 
-fn validate_catalog(response: &Value, profile: &str) -> Result<(), String> {
+pub(super) fn validate_catalog(response: &Value, profile: &str) -> Result<(), String> {
     if profile == "negotiated-composition-v1" {
         return lookup_catalog::validate(response);
     }

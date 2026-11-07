@@ -5,6 +5,8 @@ enum RpcReadKind {
     None,
     Catalog,
     Recovery,
+    /// A fixed manifest read admits its own validated refusal, without automatic retry.
+    ContentManifest,
     /// A gameplay read that is not itself a recovery operation, but whose
     /// transport failures are still transient: the gateway may be briefly
     /// unavailable (`-32003`) or time out (`-32008`) while the owner brings an
@@ -35,10 +37,10 @@ fn read_kind_for_dispatch(method: &str, params: &Value) -> RpcReadKind {
 }
 
 /// Whether a read kind treats a transient gateway fault as recoverable rather
-/// than terminal. Every kind except `None` classifies these; `None` is a
-/// dispatch or write whose failure must not be silently retried as a read.
+/// than terminal. Writes and complete-manifest reads stay terminal; the latter
+/// preserve their exact recorded attempt instead of automatically querying again.
 fn classifies_transient_gateway_faults(read_kind: RpcReadKind) -> bool {
-    !matches!(read_kind, RpcReadKind::None)
+    !matches!(read_kind, RpcReadKind::None | RpcReadKind::ContentManifest)
 }
 
 /// Whether a `tools/call` dispatch classifies transient gateway faults, i.e.

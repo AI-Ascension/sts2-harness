@@ -11,6 +11,7 @@ use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncReadExt, AsyncWrite, AsyncWr
 pub const VERSION: &str = "sts2.exo-lookup-wire-v1";
 pub const BOOTSTRAP_VERSION: &str = "sts2.exo-lookup-wire-v2-bootstrap";
 pub const HISTORY_VERSION: &str = "sts2.exo-lookup-wire-v3-history";
+pub const MANIFEST_VERSION: &str = "sts2.exo-lookup-wire-v4-content-manifest";
 pub const FRAME_BYTES: usize = 196_608;
 pub const TOOL_BYTES: usize = 16_384;
 pub const FEEDBACK_BYTES: usize = 7_000;
@@ -39,6 +40,13 @@ pub enum Payload {
     },
     History {
         arguments: Value,
+    },
+    ContentManifest {
+        operation_id: String,
+    },
+    ReadManifest {
+        record_ordinal: usize,
+        offset: usize,
     },
     ReadRetained {
         record_ordinal: usize,
@@ -92,6 +100,13 @@ pub fn decode<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> Result<T, &'stati
 
 pub fn decode_frame(bytes: &[u8]) -> Result<Frame, &'static str> {
     let frame: Frame = decode(bytes)?;
+    if matches!(
+        frame.payload,
+        Payload::ContentManifest { .. } | Payload::ReadManifest { .. }
+    ) && frame.wire_version != MANIFEST_VERSION
+    {
+        return Err("exo_lookup_wire_version");
+    }
     match (frame.wire_version.as_str(), &frame.payload) {
         (VERSION, Payload::Bootstrap { .. }) | (VERSION, Payload::History { .. }) => {
             Err("exo_lookup_wire_version")
@@ -99,8 +114,9 @@ pub fn decode_frame(bytes: &[u8]) -> Result<Frame, &'static str> {
         (BOOTSTRAP_VERSION, Payload::History { .. }) => Err("exo_lookup_wire_version"),
         // Each additive turn carries its own pin, so the two selectors above are the whole rule:
         // a bootstrap turn is never admitted on the pin history added, and vice versa.
-        (HISTORY_VERSION, Payload::Bootstrap { .. }) => Err("exo_lookup_wire_version"),
-        (VERSION | BOOTSTRAP_VERSION | HISTORY_VERSION, _) => Ok(frame),
+        (HISTORY_VERSION | MANIFEST_VERSION, Payload::Bootstrap { .. })
+        | (MANIFEST_VERSION, Payload::History { .. }) => Err("exo_lookup_wire_version"),
+        (VERSION | BOOTSTRAP_VERSION | HISTORY_VERSION | MANIFEST_VERSION, _) => Ok(frame),
         _ => Err("exo_lookup_wire_version"),
     }
 }
@@ -148,8 +164,21 @@ pub fn version_for_payload(payload: &Payload) -> &'static str {
     match payload {
         Payload::Bootstrap { .. } => BOOTSTRAP_VERSION,
         Payload::History { .. } => HISTORY_VERSION,
+        Payload::ContentManifest { .. } | Payload::ReadManifest { .. } => MANIFEST_VERSION,
         _ => VERSION,
     }
+}
+
+pub fn owned_tool_name(name: &str) -> bool {
+    matches!(
+        name,
+        "sts2_lookup_query"
+            | "sts2_lookup_read"
+            | "sts2_lookup_bootstrap"
+            | "sts2_lookup_history"
+            | "sts2_lookup_content_manifest"
+            | "sts2_lookup_manifest_read"
+    )
 }
 
 pub async fn write_frame(

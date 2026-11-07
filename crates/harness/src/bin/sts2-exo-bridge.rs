@@ -64,6 +64,7 @@ fn execute() -> Result<(), &'static str> {
                 ExoLookupProfile::Terminal => loaded.lookup_description()?,
                 ExoLookupProfile::Bootstrap => loaded.lookup_bootstrap_description()?,
                 ExoLookupProfile::History => loaded.lookup_history_description()?,
+                ExoLookupProfile::ContentManifest => loaded.lookup_manifest_description()?,
             };
             return write_output(
                 &serde_json::to_vec(&description).map_err(|_| "exo_bridge_description")?,

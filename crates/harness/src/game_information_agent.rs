@@ -24,6 +24,13 @@ pub enum LookupTurn {
         operation_id: String,
         request: Vec<u8>,
     },
+    ContentManifest {
+        operation_id: String,
+    },
+    ReadManifest {
+        record_ordinal: usize,
+        offset: usize,
+    },
     ReadRetained {
         record_ordinal: usize,
         offset: usize,
@@ -49,6 +56,16 @@ pub enum LookupFeedback {
     History {
         operation_id: String,
         answer: Value,
+    },
+    ContentManifest {
+        record_ordinal: usize,
+        delivery: Box<manifest::ContentManifestDelivery>,
+    },
+    ManifestBytes {
+        record_ordinal: usize,
+        offset: usize,
+        total_bytes: usize,
+        bytes: Vec<u8>,
     },
     Bytes {
         record_ordinal: usize,
@@ -129,6 +146,12 @@ fn handle_read<M: LookupMcpPort>(
     if matches!(turn, LookupTurn::History { .. }) {
         return crate::game_information::history::serve_history(session, turn);
     }
+    if matches!(
+        turn,
+        LookupTurn::ContentManifest { .. } | LookupTurn::ReadManifest { .. }
+    ) {
+        return super::manifest::handle_agent(session, corpus, mcp, binding, turn);
+    }
     match turn {
         LookupTurn::Query {
             operation_id,
@@ -161,8 +184,9 @@ fn handle_read<M: LookupMcpPort>(
                 Err(error) => LookupFeedback::Error(error),
             }
         }
-        LookupTurn::History { .. } | LookupTurn::Decide { .. } => {
-            LookupFeedback::Error(LookupError::Invalid)
-        }
+        LookupTurn::History { .. }
+        | LookupTurn::Decide { .. }
+        | LookupTurn::ContentManifest { .. }
+        | LookupTurn::ReadManifest { .. } => LookupFeedback::Error(LookupError::Invalid),
     }
 }
