@@ -3,9 +3,9 @@
 ## System One in-process TLS transport
 
 The System One bridge performs its own HTTPS exchange, so the workspace gains a TLS client for the
-first time. The pinned set is `rustls` exactly `0.23.45` (Apache-2.0 OR ISC OR MIT;
+first time. The pinned set is `rustls` exactly `0.23.46` (Apache-2.0 OR ISC OR MIT;
 https://github.com/rustls/rustls) with the `ring` crypto backend exactly `0.17.14`
-(Apache-2.0 AND ISC), `webpki-roots` exactly `1.0.9` (CDLA-Permissive-2.0) as the compiled-in
+(Apache-2.0 AND ISC), `webpki-roots` exactly `1.0.11` (CDLA-Permissive-2.0) as the compiled-in
 trust anchor, `rustls-pki-types` exactly `1.15.1` (MIT OR Apache-2.0), `rustls-webpki` `0.103.15`
 (ISC), `untrusted` `0.9.0` (ISC), `subtle` `2.6.1` (BSD-3-Clause), and `log` `0.4.34`
 (MIT OR Apache-2.0). Exact sources and registry integrity checksums are recorded in `Cargo.lock`;
@@ -49,7 +49,7 @@ lockfile. Node `22.14.0` and pnpm `10.26.2` are external build/runtime inputs, n
 Source/process verification is not redistribution approval; a release still requires the complete
 transitive license/advisory and packaged-artifact review.
 
-Operation identity creation uses `uuid` exactly `1.23.5` (Apache-2.0 OR MIT;
+Operation identity creation uses `uuid` exactly `1.29.0` (Apache-2.0 OR MIT;
 https://github.com/uuid-rs/uuid), with UUIDv4 generation backed by `getrandom`.
 The dependency change locks `getrandom` 0.4.3 (MIT OR Apache-2.0), `r-efi` 6.0.0
 (MIT OR Apache-2.0 OR LGPL-2.1-or-later), `futures-core`, `futures-task`, and
@@ -65,8 +65,8 @@ empty warnings. Audited Cargo.lock SHA-256:
 `d19e690f50502932fe3872c629018127ec566e3b36eac9694d56853351d088e5`.
 This bounded snapshot check must be refreshed for changed dependencies or release.
 
-Runtime-v3 contract tests use `jsonschema` 0.52.1 (MIT), with default features disabled to avoid
-HTTP/file reference retrieval. It is a dev-only schema validator, not a second protocol owner.
+Runtime-v3 contract tests use `jsonschema` 0.60.1 (MIT), with default features disabled to avoid
+HTTP/file reference retrieval. It is an embedded local Harness schema validator, not a second protocol owner.
 The copied Runtime-v3 schemas/goldens are MIT-licensed `sts2-protocol` artifacts with exact
 commit, checksum inventory, mapping, and sanitization provenance in their adjacent README.
 
@@ -85,12 +85,12 @@ fixture generator from the pinned external checkout against candidate harness li
 that generator source is not copied or distributed here. This is synthetic conformance tooling,
 not a product dependency or runtime integration.
 
-The Runtime-v1 MCP process adapter uses MIT-licensed Tokio exactly1.53.1 with default features
-disabled and only rt/process/io-util/time/macros enabled. Its locked process/I/O dependencies are
+The Runtime-v1 MCP process adapter uses MIT-licensed Tokio exactly 1.54.1 with default features
+disabled and the io-std/io-util/macros/process/rt/sync/time features requested. Its locked process/I/O dependencies are
 not provider SDKs or copied source; their declared licenses remain independent. The rationale and
 bounded lifecycle are documented in ADR0005; release-time advisory/license review remains required.
 
-The research-package tool uses `jsonschema` exactly `0.52.1` as a test-only dependency (MIT;
+The research-package tool uses `jsonschema` exactly `0.60.1` as a test-only dependency (MIT;
 upstream `https://github.com/Stranger6667/jsonschema`). Default features are disabled, including
 HTTP and file reference retrieval. It validates synthetic research-schema instances, not game
 behavior. Its transitive dependency versions are pinned in `Cargo.lock`; their own declared
@@ -99,7 +99,7 @@ The inspected Linux test dependency metadata also includes Apache-2.0, MIT-0, Zl
 Unicode-3.0, and dual-license choices; this notice does not relicense those packages as MIT.
 
 The Exo process adapter uses Tokio 1.53.1 (MIT, crates.io, upstream
-https://github.com/tokio-rs/tokio), with only `rt`, `process`, `io-util`, `time`, and `macros`
+https://github.com/tokio-rs/tokio), with `io-std`, `io-util`, `macros`, `rt-multi-thread`, `time`, and `sync`
 features requested. Newly locked dependencies are bytes 1.12.1 (MIT), mio 1.2.3 (MIT),
 tokio-macros 2.7.2 (MIT), errno 0.3.14, signal-hook-registry 1.4.8, pin-project-lite 0.2.17,
 windows-link 0.2.1, and windows-sys 0.61.2 (each MIT or Apache-2.0), plus
@@ -119,7 +119,7 @@ must record their source, exact version or digest, license, redistribution permi
 status before they become release inputs. Unknown or incompatible provenance is a release blocker.
 
 The patch-diff workspace tool uses the existing pinned `serde` and `serde_json` packages for
-structural JSON parsing. Its full-schema tests use `jsonschema` 0.52.1 (MIT, crates.io, upstream
+structural JSON parsing. Its full-schema tests use `jsonschema` 0.60.1 (MIT, crates.io, upstream
 https://github.com/Stranger6667/jsonschema) with default features disabled. This test-only dependency
 does not enable external HTTP/file schema resolution and is not linked into the utility binary.
 Exact transitive versions and integrity checksums are recorded in Cargo.lock. The validator checks
